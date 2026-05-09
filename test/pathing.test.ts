@@ -182,7 +182,7 @@ describe('findPath — unit interactions (§2.4)', () => {
     expect(r).toBeNull();
   });
 
-  test('cannot land on enemy hex', () => {
+  test('CAN land on enemy hex (mêlée stacking — entering triggers Phase A.5 brawl)', () => {
     const enemy = placeUnit('e1', 1, { q: 1, r: 0 });
     const r = findPath(
       STRIP,
@@ -192,6 +192,21 @@ describe('findPath — unit interactions (§2.4)', () => {
       INF,
       0,
     );
+    expect(r).not.toBeNull();
+    expect(r!.path).toEqual([{ q: 1, r: 0 }]);
+  });
+
+  test('cannot path PAST an enemy hex — enemies terminate further pathing', () => {
+    const enemy = placeUnit('e1', 1, { q: 1, r: 0 });
+    const r = findPath(
+      STRIP,
+      unitsAt([enemy]),
+      { q: 0, r: 0 },
+      { q: 2, r: 0 }, // past the enemy
+      INF,
+      0,
+    );
+    // STRIP is 1D so going around is impossible.
     expect(r).toBeNull();
   });
 

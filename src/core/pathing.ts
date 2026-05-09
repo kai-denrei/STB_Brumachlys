@@ -6,7 +6,10 @@
 //   • Path returned is the list of hexes traversed AFTER `from` (not including it).
 //   • Step cost is the terrain movementCost of each ENTERED hex (in tenths).
 //   • Friendly units are pass-through but cannot be the destination.
-//   • Enemy units block traversal entirely (must stop adjacent — see §2.4).
+//   • Enemy units terminate the path: you can MOVE INTO an enemy hex (which
+//     triggers mêlée combat in the resolver's Phase A.5), but you cannot
+//     traverse PAST one. So enemy hexes are valid destinations but block
+//     further pathing.
 
 import { neighbors, key as hexKey } from './hex.ts';
 import type { Hex, GameMap, UnitInstance, UnitType, FactionId } from './types.ts';
@@ -30,6 +33,9 @@ export function findPath(
   if (!map.tiles.has(toKey)) return null;
 
   // Build occupancy excluding any unit standing on `from` (presumed to be us).
+  // Enemy hexes are now valid destinations (mêlée combat happens on arrival)
+  // but cannot be traversed past. Friendly hexes are pass-through but can't
+  // be a final landing.
   const enemyHexes = new Set<string>();
   const friendlyHexes = new Set<string>();
   for (const u of Object.values(units)) {
@@ -38,7 +44,7 @@ export function findPath(
     if (u.faction === faction) friendlyHexes.add(k);
     else enemyHexes.add(k);
   }
-  if (enemyHexes.has(toKey) || friendlyHexes.has(toKey)) return null;
+  if (friendlyHexes.has(toKey)) return null;
 
   const distances = new Map<string, number>();
   const previous = new Map<string, Hex>();
@@ -67,11 +73,12 @@ export function findPath(
     }
 
     if (current.cost > (distances.get(ck) ?? Infinity)) continue; // stale
+    // Enemy hexes terminate further pathing: don't expand neighbours past one.
+    if (ck !== hexKey(from) && enemyHexes.has(ck)) continue;
 
     for (const n of neighbors(current.hex)) {
       const nk = hexKey(n);
       if (!map.tiles.has(nk)) continue;
-      if (enemyHexes.has(nk)) continue;
 
       const tile = map.tiles.get(nk)!;
       const stepCost = unitType.terrainEffects[tile]?.movementCost ?? 99;
@@ -96,9 +103,12 @@ export function findPath(
 
 // All hexes a unit could MOVE TO from `from` within its movement budget.
 // Excludes `from` itself, friendly-occupied hexes (cannot land on them),
-// enemy-occupied hexes, and impassable terrain. Friendly hexes are still
-// traversable (their cost is included in path-finding) but cannot be a
-// destination — see DECISIONS §B.5 for the conservative-planner rationale.
+// and impassable terrain. Enemy-occupied hexes ARE valid destinations
+// (entering them triggers mêlée combat) but cannot be traversed past, so
+// neighbours of enemy hexes are not expanded.
+// Friendly hexes are still traversable (their cost is included in
+// path-finding) but cannot be a destination — see DECISIONS §B.5 for the
+// conservative-planner rationale.
 export function reachableHexes(
   map: GameMap,
   units: Record<string, UnitInstance>,
@@ -128,11 +138,12 @@ export function reachableHexes(
     const current = queue.splice(bestIdx, 1)[0]!;
     const ck = hexKey(current.hex);
     if (current.cost > (distances.get(ck) ?? Infinity)) continue;
+    // Enemy hexes terminate further pathing — don't expand past them.
+    if (ck !== hexKey(from) && enemyHexes.has(ck)) continue;
 
     for (const n of neighbors(current.hex)) {
       const nk = hexKey(n);
       if (!map.tiles.has(nk)) continue;
-      if (enemyHexes.has(nk)) continue;
       const tile = map.tiles.get(nk)!;
       const stepCost = unitType.terrainEffects[tile]?.movementCost ?? 99;
       if (stepCost >= 99) continue;
@@ -146,6 +157,7 @@ export function reachableHexes(
   }
 
   // Strip from-hex and any friendly hex from the final destination set.
+  // Enemy hexes stay — they're valid mêlée destinations.
   distances.delete(hexKey(from));
   for (const fk of friendlyHexes) distances.delete(fk);
   return distances;

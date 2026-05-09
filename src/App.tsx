@@ -183,13 +183,19 @@ export function App() {
       return;
     }
 
+    // Visible enemy in attack range → queue a ranged attack (preserves the
+    // existing single-tap UX for adjacent attacks).
     if (unitHere && unitHere.faction !== planner && attackable.has(k)) {
       queueOrder(planner, { kind: 'attack', unitId: selectedUnit.id, targetHex: hex });
       selectUnit(null);
       return;
     }
 
-    if (!unitHere && reachable.has(k) && selectedUnitType) {
+    // Reachable hex (may now be enemy-occupied — entering triggers mêlée in
+    // Phase A.5). Empty + reachable → standard move. Enemy + reachable but
+    // NOT attackable → move-into-fight (the path's final step lands on the
+    // enemy hex and the resolver brawls them).
+    if (reachable.has(k) && selectedUnitType && (!unitHere || unitHere.faction !== planner)) {
       const pathResult = findPath(
         game.map,
         game.units,

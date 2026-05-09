@@ -129,8 +129,9 @@ describe('resolveRound — Phase A movement', () => {
     expect(log.some((e) => e.type === 'path-truncated')).toBe(true);
   });
 
-  test('two units want the same hex → higher init wins, lower stops one back', () => {
-    // Infantry init 8, Tank init 6. Both want (2,0). Infantry wins.
+  test('two enemy units want the same hex → both enter, mêlée resolves the stack', () => {
+    // Infantry init 8, Tank init 6. Both want (2,0). With mêlée stacking:
+    // both land at (2,0) (in init order), then Phase A.5 resolves the brawl.
     const inf = unit('inf', 'infantry', 0, { q: 0, r: 0 });
     const tnk = unit('tnk', 'tank', 1, { q: 4, r: 0 });
     const s = state([inf, tnk]);
@@ -138,24 +139,96 @@ describe('resolveRound — Phase A movement', () => {
       { kind: 'move', unitId: 'inf', path: [{ q: 1, r: 0 }, { q: 2, r: 0 }] },
     ];
     const ordersP1: Order[] = [
-      // Tank moves W into (3,0) then (2,0). Tank movement 12, plains cost 3, plenty of budget.
       { kind: 'move', unitId: 'tnk', path: [{ q: 3, r: 0 }, { q: 2, r: 0 }] },
     ];
-    const { newState } = resolveRound(s, ordersP0, ordersP1, unitTypes);
-    expect(newState.units.inf!.hex).toEqual({ q: 2, r: 0 });
-    // Tank should be at (3,0) — stopped one back
-    expect(newState.units.tnk!.hex).toEqual({ q: 3, r: 0 });
+    const { newState, log } = resolveRound(s, ordersP0, ordersP1, unitTypes);
+    // Both moves landed at (2,0); the move events show the contested hex.
+    const moveEvents = log.filter((e) => e.type === 'move');
+    expect(moveEvents.some((e) => e.type === 'move' && e.unitId === 'inf' && e.to.q === 2 && e.to.r === 0)).toBe(true);
+    expect(moveEvents.some((e) => e.type === 'move' && e.unitId === 'tnk' && e.to.q === 2 && e.to.r === 0)).toBe(true);
+    // Mêlée fired — at least one attack at the stacked hex.
+    expect(log.some((e) => e.type === 'attack')).toBe(true);
+    // Survivors (if any) sit on (2,0).
+    for (const u of Object.values(newState.units)) {
+      expect(u.hex).toEqual({ q: 2, r: 0 });
+    }
   });
 
-  test('move blocked by enemy → unit stops at last empty hex along path', () => {
+  test('move into enemy hex enters and triggers mêlée (no longer "stop one back")', () => {
     const me = unit('me', 'infantry', 0, { q: 0, r: 0 });
     const enemy = unit('e', 'infantry', 1, { q: 2, r: 0 });
     const s = state([me, enemy]);
     const orders: Order[] = [
       { kind: 'move', unitId: 'me', path: [{ q: 1, r: 0 }, { q: 2, r: 0 }] },
     ];
-    const { newState } = resolveRound(s, orders, [], unitTypes);
-    expect(newState.units.me!.hex).toEqual({ q: 1, r: 0 });
+    const { newState, log } = resolveRound(s, orders, [], unitTypes);
+    // The move event lands at (2,0).
+    const moveEv = log.find((e) => e.type === 'move' && e.unitId === 'me');
+    expect(moveEv && moveEv.type === 'move' && moveEv.to).toEqual({ q: 2, r: 0 });
+    // Mêlée fires at the stacked hex — at least one attack event (init tie:
+    // both infantry, same round, FNV-1a tiebreaks deterministically).
+    expect(log.some((e) => e.type === 'attack')).toBe(true);
+    // Surviving units (if any) are at (2,0).
+    for (const u of Object.values(newState.units)) {
+      expect(u.hex).toEqual({ q: 2, r: 0 });
+    }
+  });
+});
+
+describe('resolveRound — Phase A.5 mêlée stacking', () => {
+  test('two enemies starting stacked brawl until at least one is dead OR mutually-immune', () => {
+    // Pre-stacked: no movement orders, but mêlée still fires at end of Phase A.
+    const a = unit('a', 'infantry', 0, { q: 1, r: 1 });
+    const b = unit('b', 'infantry', 1, { q: 1, r: 1 });
+    const s = state([a, b]);
+    const { newState, log } = resolveRound(s, [], [], unitTypes);
+
+    // At least one attack landed.
+    expect(log.some((e) => e.type === 'attack')).toBe(true);
+    // No movement events (nobody moved).
+    expect(log.some((e) => e.type === 'move')).toBe(false);
+    // Outcome — survivors only, all on (1,1). Equal-stat infantry vs infantry
+    // stalemate is possible since both deal the same damage; the brawl exits
+    // when both deal zero on a strike.
+    for (const u of Object.values(newState.units)) {
+      expect(u.hex).toEqual({ q: 1, r: 1 });
+    }
+  });
+
+  test('infantry vs naval-armored stalemate exits without infinite loop (no mutual damage)', () => {
+    // Synthesise an "armored-naval-like" type that infantry can't damage AND
+    // that can't damage infantry: use an empty attackStrengths matrix.
+    const synth = {
+      ...unitTypes.infantry!,
+      key: 'untouchable',
+      armorType: 'naval' as const,
+      attackStrengths: { personnel: 0, armored: 0, naval: 0, air: 0 },
+    };
+    const types = { ...unitTypes, untouchable: synth };
+    const inf = unit('inf', 'infantry', 0, { q: 0, r: 0 });
+    const ghost = { ...unit('ghost', 'infantry', 1, { q: 0, r: 0 }), type: 'untouchable' };
+    const s = state([inf, ghost]);
+    const { newState, log } = resolveRound(s, [], [], types);
+    // Both alive, no kills, exactly one attack + one counter (or just one
+    // attack if counter is gated out) before stalemate exit.
+    expect(Object.values(newState.units).length).toBe(2);
+    expect(log.filter((e) => e.type === 'kill').length).toBe(0);
+    expect(log.filter((e) => e.type === 'attack').length).toBeLessThanOrEqual(1);
+  });
+
+  test('phase A.5 fires AFTER movement, so a unit moving in then triggers the brawl in the same round', () => {
+    const me = unit('me', 'tank', 0, { q: 0, r: 0 });
+    const enemy = unit('enemy', 'infantry', 1, { q: 1, r: 0 });
+    const s = state([me, enemy]);
+    const orders: Order[] = [
+      { kind: 'move', unitId: 'me', path: [{ q: 1, r: 0 }] },
+    ];
+    const { log } = resolveRound(s, orders, [], unitTypes);
+    // First the move event, then the brawl events — order matters.
+    const idxMove = log.findIndex((e) => e.type === 'move');
+    const idxAttack = log.findIndex((e) => e.type === 'attack');
+    expect(idxMove).toBeGreaterThanOrEqual(0);
+    expect(idxAttack).toBeGreaterThan(idxMove);
   });
 });
 
