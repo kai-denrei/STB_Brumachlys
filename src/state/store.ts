@@ -3,6 +3,7 @@
 
 import { create } from 'zustand';
 import { resolveRound } from '../core/resolver.ts';
+import { visibleHexesFor } from '../core/fog.ts';
 import { parseWeewarMap } from '../io/weewar-xml.ts';
 import { loadUnits, loadTerrain } from '../io/data-loader.ts';
 import { mapById } from '../io/maps.ts';
@@ -30,6 +31,11 @@ type Store = {
   game: GameState | null;
   currentMapId: string | null;
   initialUnitsSnapshot: Record<string, UnitInstance> | null; // for new-game reset
+
+  // Per-faction memory of explored hexes. UI-only — not part of core GameState
+  // because it's a perspective concept, not a resolver input. Grows monotonically
+  // each round from the union of visibleHexesFor() at end-of-round.
+  discovered: Record<FactionId, Set<string>>;
 
   // UI state
   selectedUnitId: string | null;
@@ -91,6 +97,28 @@ function emptyOrders(): Record<FactionId, Order[]> {
   return { 0: [], 1: [] };
 }
 
+function seedDiscovered(
+  state: GameState,
+  unitTypes: Record<string, UnitType>,
+): Record<FactionId, Set<string>> {
+  return {
+    0: visibleHexesFor(state, 0, unitTypes),
+    1: visibleHexesFor(state, 1, unitTypes),
+  };
+}
+
+function unionDiscovered(
+  prev: Record<FactionId, Set<string>>,
+  state: GameState,
+  unitTypes: Record<string, UnitType>,
+): Record<FactionId, Set<string>> {
+  const next: Record<FactionId, Set<string>> = { 0: new Set(prev[0]), 1: new Set(prev[1]) };
+  for (const f of [0, 1] as const) {
+    for (const k of visibleHexesFor(state, f, unitTypes)) next[f].add(k);
+  }
+  return next;
+}
+
 const STANCE_CYCLE: Record<Stance, Stance> = {
   aggressive: 'defensive',
   defensive: 'hold-fire',
@@ -105,6 +133,7 @@ export const useStore = create<Store>((set, get) => ({
   game: null,
   currentMapId: null,
   initialUnitsSnapshot: null,
+  discovered: { 0: new Set(), 1: new Set() },
 
   selectedUnitId: null,
   hoveredHex: null,
@@ -132,6 +161,7 @@ export const useStore = create<Store>((set, get) => ({
       game,
       currentMapId: mapId ?? null,
       initialUnitsSnapshot: structuredClone(units),
+      discovered: seedDiscovered(game, get().unitTypes),
       selectedUnitId: null,
       hoveredHex: null,
       handoffStage: 'none',
@@ -265,8 +295,12 @@ export const useStore = create<Store>((set, get) => ({
     const pending = (get() as unknown as { __pendingResolution?: GameState })
       .__pendingResolution;
     if (!pending) return;
+    // Memory grows from end-of-round positions: each faction's last visible
+    // sweep lands in `discovered` before we transition into the next planning.
+    const grown = unionDiscovered(get().discovered, pending, get().unitTypes);
     set({
       game: pending,
+      discovered: grown,
       replayCursor: 0,
       replayPaused: true,
       __pendingResolution: undefined,
@@ -294,6 +328,7 @@ export const useStore = create<Store>((set, get) => ({
     };
     set({
       game,
+      discovered: seedDiscovered(game, get().unitTypes),
       selectedUnitId: null,
       hoveredHex: null,
       handoffStage: 'none',

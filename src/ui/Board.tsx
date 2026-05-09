@@ -12,6 +12,7 @@ import type {
   FactionId,
   UnitType,
   Hex,
+  TerrainKey,
 } from '../core/types.ts';
 
 const FACTION_COLOR: Record<FactionId, string> = {
@@ -20,11 +21,52 @@ const FACTION_COLOR: Record<FactionId, string> = {
 };
 const NEUTRAL_RING = '#5A5A55';
 
+// Texture variant keys → file paths under public/textures/. Base tiles pick a
+// variant by faction so the village art reflects ownership at a glance.
+const SQRT3 = Math.sqrt(3);
+const TEXTURE_PATHS: Record<string, string> = {
+  plains: 'textures/plains.jpg',
+  swamp: 'textures/swamp.jpg',
+  woods: 'textures/woods.jpg',
+  mountains: 'textures/mountains.jpg',
+  water: 'textures/water.jpg',
+  'base-neutral': 'textures/base-neutral.jpg',
+  'base-f0': 'textures/base-f0.jpg',
+  'base-f1': 'textures/base-f1.jpg',
+};
+
+function textureKeyForTile(
+  terrain: TerrainKey,
+  hex: Hex,
+  startingBases: GameState['map']['startingBases'],
+): string {
+  if (terrain !== 'base') return terrain;
+  const base = startingBases.find(
+    (b) => b.hex.q === hex.q && b.hex.r === hex.r,
+  );
+  if (!base || base.faction === null) return 'base-neutral';
+  return base.faction === 0 ? 'base-f0' : 'base-f1';
+}
+
+// Source images are 2×2 grids of four watercolour variants. We pick one
+// quadrant per hex so neighbouring tiles show different art. Hash on (q, r)
+// so the same hex picks the same quadrant across redraws — otherwise the
+// art would reshuffle on every pan/zoom redraw.
+//   bit 0 → x (0 = left, 1 = right)
+//   bit 1 → y (0 = top,  1 = bottom)
+function quadrantForHex(q: number, r: number): 0 | 1 | 2 | 3 {
+  const h = ((q * 73856093) ^ (r * 19349663)) >>> 0;
+  return (h & 3) as 0 | 1 | 2 | 3;
+}
+
 type Highlights = {
   selectedHex?: Hex | null;
   reachableHexes?: Set<string>;     // for movement preview
   attackableHexes?: Set<string>;    // for attack preview (enemy hexes)
-  plannedDest?: Hex | null;         // destination of queued move
+  // One [unit.hex, ...moveOrder.path] per queued move. Drawn as dotted line +
+  // arrowhead per path. Iterating over all queued orders (not just the
+  // selected unit's) keeps the visualisation alive after queue → deselect.
+  plannedPaths?: Hex[][] | null;
   plannedAttack?: Hex | null;       // target hex of queued attack
 };
 
@@ -49,6 +91,11 @@ type Props = {
   state: GameState;
   unitTypes: Record<string, UnitType>;
   perspective: FactionId | null; // whose fog is applied; null = full reveal (replay)
+  // Three-tier fog: a hex is `live` if currentVisible.has(k), `memory` if only
+  // discovered.has(k), and `dark` otherwise. Both default to undefined which
+  // disables fog tiers entirely (used by replay for full reveal).
+  currentVisible?: Set<string>;
+  discovered?: Set<string>;
   highlights?: Highlights;
   animationOverlay?: AnimationOverlay | null;
   onTapHex?: (hex: Hex) => void;
@@ -58,6 +105,8 @@ export function Board({
   state,
   unitTypes,
   perspective,
+  currentVisible,
+  discovered,
   highlights,
   animationOverlay,
   onTapHex,
@@ -84,6 +133,26 @@ export function Board({
   const TAP_THRESHOLD_PX = 8;
   const TAP_MAX_MS = 500;
 
+  const texturesRef = useRef<Map<string, HTMLImageElement>>(new Map());
+
+  // Preload terrain/base textures once on mount. Each load triggers a redraw so
+  // the board fills in progressively without blocking first paint.
+  useEffect(() => {
+    const baseUrl = import.meta.env.BASE_URL ?? '/';
+    for (const [key, path] of Object.entries(TEXTURE_PATHS)) {
+      const img = new Image();
+      img.src = `${baseUrl}${path}`;
+      img.onload = () => {
+        texturesRef.current.set(key, img);
+        draw();
+      };
+      img.onerror = () => {
+        console.warn(`[brumachlys] texture failed to load: ${path}`);
+      };
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Resize observer to keep canvas sized to its container
   useLayoutEffect(() => {
     const container = containerRef.current;
@@ -104,11 +173,11 @@ export function Board({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Re-draw on state, highlights, and animation overlay changes
+  // Re-draw on state, highlights, fog, and animation overlay changes
   useEffect(() => {
     draw();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state, perspective, highlights, animationOverlay]);
+  }, [state, perspective, currentVisible, discovered, highlights, animationOverlay]);
 
   // ── Pointer handlers: tap / drag-pan / pinch-zoom ────────────────────────
   function localXY(e: React.PointerEvent<HTMLCanvasElement>): { x: number; y: number } {
@@ -260,33 +329,88 @@ export function Board({
     const { size } = vp;
 
     // ── Terrain tiles ────────────────────────────────────────────────────
+    // Each tile is built as a Path2D so we can fill, clip-and-drawImage, and
+    // stroke against the same shape without re-pathing. Three-tier fog is
+    // applied per-tile when both currentVisible and discovered are provided
+    // (i.e. during planning); replay passes neither so all tiles render live.
     ctx.lineWidth = 1;
     ctx.strokeStyle = TERRAIN_STROKE;
+    const hexW = SQRT3 * size;
+    const hexH = 2 * size;
+    const fogActive = !!(currentVisible || discovered);
     for (const [k, terrain] of state.map.tiles) {
       const idx = k.indexOf(',');
       const hex: Hex = { q: Number(k.slice(0, idx)), r: Number(k.slice(idx + 1)) };
       const verts = hexVertices(hex, size);
-      ctx.beginPath();
+      const path = new Path2D();
       for (let i = 0; i < verts.length; i++) {
         const v = verts[i]!;
         const x = v[0] + vp.offsetX;
         const y = v[1] + vp.offsetY;
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
+        if (i === 0) path.moveTo(x, y);
+        else path.lineTo(x, y);
       }
-      ctx.closePath();
-      ctx.fillStyle = TERRAIN_FILL[terrain];
-      ctx.fill();
-      ctx.stroke();
+      path.closePath();
 
-      // Highlight overlays
+      // Resolve the visibility tier. Without fogActive everything is `live`.
+      const inVisible = !fogActive || (currentVisible?.has(k) ?? false);
+      const inDiscovered = !fogActive || (discovered?.has(k) ?? false);
+      const tier: 'live' | 'memory' | 'dark' =
+        inVisible ? 'live' : inDiscovered ? 'memory' : 'dark';
+
+      if (tier !== 'dark') {
+        // Fallback flat fill (visible until the texture for this biome arrives).
+        ctx.fillStyle = TERRAIN_FILL[terrain];
+        ctx.fill(path);
+
+        // Texture overlay clipped to the hex. The source asset is a 2×2 grid
+        // of four variants; sample one quadrant deterministically per hex so
+        // neighbouring tiles look different but each tile stays stable across
+        // redraws (panning/zooming doesn't reshuffle).
+        const texKey = textureKeyForTile(terrain, hex, state.map.startingBases);
+        const tex = texturesRef.current.get(texKey);
+        if (tex && tex.complete && tex.naturalWidth > 0) {
+          const c = hexCenter(hex, size);
+          const halfW = tex.naturalWidth / 2;
+          const halfH = tex.naturalHeight / 2;
+          const q4 = quadrantForHex(hex.q, hex.r);
+          const sx = (q4 & 1) * halfW;
+          const sy = ((q4 >> 1) & 1) * halfH;
+          ctx.save();
+          ctx.clip(path);
+          ctx.drawImage(
+            tex,
+            sx, sy, halfW, halfH,
+            c.x + vp.offsetX - hexW / 2,
+            c.y + vp.offsetY - size,
+            hexW,
+            hexH,
+          );
+          ctx.restore();
+        }
+
+        // Inter-tile hairline.
+        ctx.stroke(path);
+
+        // Memory dim: 0.55-alpha black overlay covers texture + stroke uniformly.
+        if (tier === 'memory') {
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+          ctx.fill(path);
+        }
+      }
+      // tier === 'dark': skip texture/stroke entirely; bg #0E0F10 shows through.
+
+      // Highlight overlays. Reachable can paint over any tier (DECISIONS §B.5
+      // — planner trusts last-known terrain). Attackable only ever lands on
+      // a currentVisible tile by construction in App.tsx. Selection is on the
+      // selected friendly unit which is always in current vision.
       if (highlights?.reachableHexes?.has(k)) {
-        ctx.fillStyle = 'rgba(232, 154, 60, 0.18)'; // amber translucent
-        ctx.fill();
+        ctx.fillStyle = 'rgba(232, 154, 60, 0.28)'; // amber translucent
+        ctx.fill(path);
       }
       if (highlights?.attackableHexes?.has(k)) {
-        ctx.fillStyle = 'rgba(232, 74, 74, 0.22)'; // red translucent
-        ctx.fill();
+        ctx.fillStyle = 'rgba(232, 74, 74, 0.32)'; // red translucent
+        ctx.fill(path);
       }
       if (
         highlights?.selectedHex &&
@@ -295,25 +419,102 @@ export function Board({
       ) {
         ctx.lineWidth = Math.max(2, size * 0.12);
         ctx.strokeStyle = '#E89A3C';
-        ctx.stroke();
+        ctx.stroke(path);
         ctx.lineWidth = 1;
         ctx.strokeStyle = TERRAIN_STROKE;
       }
     }
 
-    // Planned move dest marker
-    if (highlights?.plannedDest) {
-      const c = hexCenter(highlights.plannedDest, size);
-      ctx.beginPath();
-      ctx.arc(c.x + vp.offsetX, c.y + vp.offsetY, size * 0.25, 0, Math.PI * 2);
-      ctx.lineWidth = Math.max(1.5, size * 0.07);
-      ctx.strokeStyle = '#E89A3C';
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.arc(c.x + vp.offsetX, c.y + vp.offsetY, size * 0.1, 0, Math.PI * 2);
-      ctx.fillStyle = '#E89A3C';
-      ctx.fill();
+    // Planned-move path: per queued move order, a dotted polyline of small
+    // filled discs ending in a filled-triangle arrowhead at the destination.
+    // Rendered at full opacity over fog (intent UI is not terrain — the
+    // planner needs to see their own queued order). Each disc and the
+    // arrowhead get a 1px solid-black outline at full alpha so the faction
+    // colour stays readable against varied watercolour terrain.
+    if (
+      perspective !== null &&
+      highlights?.plannedPaths &&
+      highlights.plannedPaths.length > 0
+    ) {
+      const PATH_OPACITY = 0.7;
+      const DISC_R = Math.max(1.5, size * 0.06);
+      const DISC_SPACING = size * 0.32;
+      const ARROW_LEN = size * 0.5;
+      const ARROW_HALF_W = size * 0.16;
+      const colour = FACTION_COLOR[perspective];
+
+      ctx.save();
+      ctx.fillStyle = colour;
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 1;
+
+      for (const pp of highlights.plannedPaths) {
+        if (pp.length < 2) continue;
+
+        // Walk each segment, placing discs at uniform pixel spacing across
+        // the whole polyline (`leftover` carries fractional spacing across
+        // joins so discs don't bunch at hex centres).
+        let leftover = 0;
+        for (let i = 0; i < pp.length - 1; i++) {
+          const a = hexCenter(pp[i]!, size);
+          const b = hexCenter(pp[i + 1]!, size);
+          const ax = a.x + vp.offsetX;
+          const ay = a.y + vp.offsetY;
+          const bx = b.x + vp.offsetX;
+          const by = b.y + vp.offsetY;
+          const dx = bx - ax;
+          const dy = by - ay;
+          const segLen = Math.hypot(dx, dy);
+          if (segLen === 0) continue;
+          const ux = dx / segLen;
+          const uy = dy / segLen;
+          let t = i === 0 ? 0 : leftover;
+          while (t <= segLen) {
+            ctx.beginPath();
+            ctx.arc(ax + ux * t, ay + uy * t, DISC_R, 0, Math.PI * 2);
+            ctx.globalAlpha = PATH_OPACITY;
+            ctx.fill();
+            ctx.globalAlpha = 1;
+            ctx.stroke();
+            t += DISC_SPACING;
+          }
+          leftover = t - segLen;
+        }
+
+        // Arrowhead: filled triangle whose tip lands at the destination hex
+        // centre, oriented along the last segment.
+        const tip = hexCenter(pp[pp.length - 1]!, size);
+        const prev = hexCenter(pp[pp.length - 2]!, size);
+        const tipX = tip.x + vp.offsetX;
+        const tipY = tip.y + vp.offsetY;
+        const prevX = prev.x + vp.offsetX;
+        const prevY = prev.y + vp.offsetY;
+        const adx = tipX - prevX;
+        const ady = tipY - prevY;
+        const aLen = Math.hypot(adx, ady);
+        if (aLen > 0) {
+          const aux = adx / aLen;
+          const auy = ady / aLen;
+          const baseX = tipX - aux * ARROW_LEN;
+          const baseY = tipY - auy * ARROW_LEN;
+          // Perpendicular for the wings (right-hand rotation of the segment)
+          const px = -auy;
+          const py = aux;
+          ctx.beginPath();
+          ctx.moveTo(tipX, tipY);
+          ctx.lineTo(baseX + px * ARROW_HALF_W, baseY + py * ARROW_HALF_W);
+          ctx.lineTo(baseX - px * ARROW_HALF_W, baseY - py * ARROW_HALF_W);
+          ctx.closePath();
+          ctx.globalAlpha = PATH_OPACITY;
+          ctx.fill();
+          ctx.globalAlpha = 1;
+          ctx.stroke();
+        }
+      }
+
+      ctx.restore();
     }
+
     // Planned attack target marker
     if (highlights?.plannedAttack) {
       const c = hexCenter(highlights.plannedAttack, size);
@@ -329,14 +530,24 @@ export function Board({
       ctx.stroke();
     }
 
-    // ── Base markers (faction-coloured rings on base tiles) ──────────────
+    // ── Base markers (thin faction-coloured rings as a fallback signal) ──
+    // The village texture already encodes ownership; the ring stays for
+    // legibility on small hexes and during first-load (before textures).
+    // Tier-aware: skip on dark, dim on memory, full on live.
     for (const base of state.map.startingBases) {
+      const bk = `${base.hex.q},${base.hex.r}`;
+      const baseInVisible = !fogActive || (currentVisible?.has(bk) ?? false);
+      const baseInDiscovered = !fogActive || (discovered?.has(bk) ?? false);
+      if (!baseInVisible && !baseInDiscovered) continue;
       const c = hexCenter(base.hex, size);
+      ctx.save();
+      if (!baseInVisible) ctx.globalAlpha = 0.45; // memory dim, matches tile overlay
       ctx.beginPath();
-      ctx.arc(c.x + vp.offsetX, c.y + vp.offsetY, size * 0.55, 0, Math.PI * 2);
-      ctx.lineWidth = Math.max(1.5, size * 0.08);
+      ctx.arc(c.x + vp.offsetX, c.y + vp.offsetY, size * 0.6, 0, Math.PI * 2);
+      ctx.lineWidth = Math.max(1, size * 0.05);
       ctx.strokeStyle = base.faction === null ? NEUTRAL_RING : FACTION_COLOR[base.faction];
       ctx.stroke();
+      ctx.restore();
     }
 
     // ── Units (filtered by fog for the active perspective) ───────────────

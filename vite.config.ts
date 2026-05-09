@@ -14,7 +14,7 @@ export default defineConfig({
       injectRegister: false,
       manifest: false,
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,webmanifest,json,xml,woff,woff2}'],
+        globPatterns: ['**/*.{js,css,html,svg,png,jpg,jpeg,webmanifest,json,xml,woff,woff2}'],
         navigateFallback: '/index.html',
         cleanupOutdatedCaches: true,
         clientsClaim: false,
