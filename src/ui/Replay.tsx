@@ -12,6 +12,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useStore } from '../state/store.ts';
+import { visibleHexesFor } from '../core/fog.ts';
 import { Board, type AnimationOverlay } from './Board.tsx';
 import type {
   GameState,
@@ -50,6 +51,42 @@ export function Replay({ oldState, log, unitTypes, onDone }: Props) {
   const [overlay, setOverlay] = useState<AnimationOverlay | null>(null);
   const speed = useStore((s) => s.replaySpeed);
   const setSpeed = useStore((s) => s.setReplaySpeed);
+  const discoveredByFaction = useStore((s) => s.discovered);
+
+  // Fog during replay = union of both factions' POV. Hexes neither player
+  // has discovered stay dark, preserving the "we've never been there"
+  // mystery while letting both players watch the resolution together.
+  const replayCurrentVisible = useMemo(() => {
+    const a = visibleHexesFor(working, 0, unitTypes);
+    const b = visibleHexesFor(working, 1, unitTypes);
+    const out = new Set<string>();
+    for (const k of a) out.add(k);
+    for (const k of b) out.add(k);
+    return out;
+  }, [working, unitTypes]);
+
+  // Seeded from pre-resolution memory; grows as units move into new territory
+  // during the animation. The set ref changes only when actual additions land,
+  // so Board's draw effect doesn't re-fire on every render.
+  const [replayDiscovered, setReplayDiscovered] = useState<Set<string>>(() => {
+    const seed = new Set<string>();
+    for (const k of discoveredByFaction[0]) seed.add(k);
+    for (const k of discoveredByFaction[1]) seed.add(k);
+    return seed;
+  });
+  useEffect(() => {
+    setReplayDiscovered((prev) => {
+      let changed = false;
+      const next = new Set(prev);
+      for (const k of replayCurrentVisible) {
+        if (!next.has(k)) {
+          next.add(k);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [replayCurrentVisible]);
 
   // Apply one event to the working snapshot. Pure — no animation.
   function applyEvent(s: GameState, e: ResolutionEvent): GameState {
@@ -181,6 +218,8 @@ export function Replay({ oldState, log, unitTypes, onDone }: Props) {
         state={working}
         unitTypes={unitTypes}
         perspective={null}
+        currentVisible={replayCurrentVisible}
+        discovered={replayDiscovered}
         animationOverlay={overlay}
       />
       <div className="replay-controls">

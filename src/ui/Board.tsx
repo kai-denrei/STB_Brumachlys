@@ -550,17 +550,23 @@ export function Board({
       ctx.restore();
     }
 
-    // ── Units (filtered by fog for the active perspective) ───────────────
-    const fogVisible =
-      perspective !== null ? visibleHexesFor(state, perspective, unitTypes) : null;
+    // ── Units (filtered by fog) ──────────────────────────────────────────
+    // Prefer the explicit `currentVisible` prop (used by both planning and
+    // the replay union-fog). Fall back to recomputing from `perspective` for
+    // any caller that omits the prop. Friendly units (during planning, when
+    // a perspective is set) always render; everything else needs to be in
+    // the visible set or it's hidden by fog.
+    const fogFilter =
+      currentVisible ??
+      (perspective !== null ? visibleHexesFor(state, perspective, unitTypes) : null);
 
     const animMove =
       animationOverlay?.kind === 'move' ? animationOverlay : null;
 
     for (const u of Object.values(state.units)) {
       const isFriendly = perspective !== null && u.faction === perspective;
-      if (!isFriendly && fogVisible) {
-        if (!fogVisible.has(`${u.hex.q},${u.hex.r}`)) continue; // hidden in fog
+      if (!isFriendly && fogFilter) {
+        if (!fogFilter.has(`${u.hex.q},${u.hex.r}`)) continue; // hidden in fog
       }
       // If this unit is the one being animated, override its draw position
       // with a lerped point along the pathTaken array.
