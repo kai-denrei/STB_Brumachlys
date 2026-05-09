@@ -11,6 +11,7 @@ import type {
   GameState,
   FactionId,
   UnitType,
+  UnitInstance,
   Hex,
   TerrainKey,
 } from '../core/types.ts';
@@ -571,6 +572,34 @@ export function Board({
     const animMove =
       animationOverlay?.kind === 'move' ? animationOverlay : null;
 
+    // Pre-pass: group units by hex so stacked units (mêlée) can be drawn
+    // with a small lateral offset rather than fully overlapping. Order is
+    // sorted by unit id so identical state renders identically across frames.
+    const stackByHex = new Map<string, string[]>();
+    for (const u of Object.values(state.units)) {
+      const hk = `${u.hex.q},${u.hex.r}`;
+      let list = stackByHex.get(hk);
+      if (!list) {
+        list = [];
+        stackByHex.set(hk, list);
+      }
+      list.push(u.id);
+    }
+    for (const list of stackByHex.values()) list.sort();
+
+    function stackOffsetFor(u: UnitInstance): { dx: number; dy: number } {
+      const list = stackByHex.get(`${u.hex.q},${u.hex.r}`);
+      if (!list || list.length <= 1) return { dx: 0, dy: 0 };
+      const idx = list.indexOf(u.id);
+      if (list.length === 2) {
+        return { dx: (idx === 0 ? -1 : 1) * size * 0.22, dy: 0 };
+      }
+      // 3+ units: ring layout starting at top, going clockwise.
+      const angle = (idx / list.length) * Math.PI * 2 - Math.PI / 2;
+      const r = size * 0.22;
+      return { dx: Math.cos(angle) * r, dy: Math.sin(angle) * r };
+    }
+
     for (const u of Object.values(state.units)) {
       const isFriendly = perspective !== null && u.faction === perspective;
       if (!isFriendly && fogFilter) {
@@ -591,9 +620,17 @@ export function Board({
         drawCx = c.x + vp.offsetX;
         drawCy = c.y + vp.offsetY;
       }
-      const cx = drawCx;
-      const cy = drawCy;
+      // Apply stack offset only to non-animated units. The animation lerps
+      // toward the destination's hex centre; once the move event applies the
+      // unit will snap into its stacked-offset position. Acceptable visual
+      // jank for the brief animation tail; avoids needing to recompute the
+      // post-move stack from a transient state.
+      const off = (animMove && animMove.unitId === u.id)
+        ? { dx: 0, dy: 0 }
+        : stackOffsetFor(u);
       const radius = size * 0.42;
+      const cx = drawCx + off.dx;
+      const cy = drawCy + off.dy;
 
       // Body
       ctx.beginPath();
