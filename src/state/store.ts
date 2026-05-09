@@ -42,6 +42,10 @@ type Store = {
   selectedBaseHex: Hex | null;
   hoveredHex: Hex | null;
 
+  // Hover-info mode: when on, taps on hexes show stats in an InfoPanel
+  // instead of queuing actions. Persists across rounds; toggled via HUD.
+  hoverInfoMode: boolean;
+
   // Handoff / replay state
   handoffStage: 'none' | 'awaiting-tap' | 'awaiting-confirm';
   replayCursor: number;
@@ -54,6 +58,7 @@ type Store = {
   selectUnit: (id: string | null) => void;
   selectBase: (hex: Hex | null) => void;
   setHover: (hex: Hex | null) => void;
+  toggleHoverInfo: () => void;
 
   queueOrder: (faction: FactionId, order: Order) => void;
   removeOrderForUnit: (
@@ -141,6 +146,7 @@ export const useStore = create<Store>((set, get) => ({
   selectedUnitId: null,
   selectedBaseHex: null,
   hoveredHex: null,
+  hoverInfoMode: false,
 
   handoffStage: 'none',
   replayCursor: 0,
@@ -191,6 +197,7 @@ export const useStore = create<Store>((set, get) => ({
   selectUnit: (id) => set({ selectedUnitId: id, selectedBaseHex: null }),
   selectBase: (hex) => set({ selectedBaseHex: hex, selectedUnitId: null }),
   setHover: (hex) => set({ hoveredHex: hex }),
+  toggleHoverInfo: () => set((s) => ({ hoverInfoMode: !s.hoverInfoMode, hoveredHex: null })),
 
   // ── Order queue ─────────────────────────────────────────────────────────
   queueOrder: (faction, order) => {
