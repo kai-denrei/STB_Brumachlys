@@ -59,6 +59,8 @@ export type GameMap = {
   width: number;
   height: number;
   name: string;
+  initialCredits: number;     // both factions start with this much
+  perBaseCredits: number;     // each owned base contributes this per round
   tiles: Map<string, TerrainKey>; // key = `${q},${r}`
   startingUnits: Array<{ hex: Hex; unitTypeKey: string; faction: FactionId }>;
   startingBases: Array<{ hex: Hex; faction: FactionId | null }>; // null = neutral
@@ -72,7 +74,11 @@ export type ResolutionEvent =
   | { type: 'attack'; attackerId: string; defenderId: string; damage: number; bonusB: number }
   | { type: 'counter'; attackerId: string; defenderId: string; damage: number }
   | { type: 'kill'; unitId: string }
-  | { type: 'lost-target'; attackerId: string; targetHex: Hex };
+  | { type: 'lost-target'; attackerId: string; targetHex: Hex }
+  // ── Economy events (Phase E) ──────────────────────────────────────────
+  | { type: 'unit-spawned'; unitId: string; faction: FactionId; unitTypeKey: string; hex: Hex; cost: number }
+  | { type: 'buy-fizzled'; faction: FactionId; baseHex: Hex; unitTypeKey: string; reason: string }
+  | { type: 'income'; faction: FactionId; amount: number; bases: number };
 
 export type GameState = {
   round: number; // 1-indexed
@@ -83,4 +89,6 @@ export type GameState = {
   pendingOrders: Record<FactionId, import('./orders.ts').Order[]>;
   rngSeed: number; // xorshift32 state
   log: ResolutionEvent[];
+  credits: Record<FactionId, number>; // economy balance per faction
+  unitIdCounter: number; // monotonic — used for spawned-unit IDs
 };

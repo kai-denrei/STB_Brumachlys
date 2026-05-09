@@ -36,6 +36,8 @@ export function parseWeewarMap(xmlString: string): GameMap {
   const name = directChildText(mapEl, 'name')?.trim() ?? 'Untitled';
   const width = parseIntStrict(directChildText(mapEl, 'width'), 0);
   const height = parseIntStrict(directChildText(mapEl, 'height'), 0);
+  const initialCredits = parseIntStrict(directChildText(mapEl, 'initialCredits'), 0);
+  const perBaseCredits = parseIntStrict(directChildText(mapEl, 'perBaseCredits'), 0);
 
   const tiles = new Map<string, TerrainKey>();
   const startingUnits: GameMap['startingUnits'] = [];
@@ -97,7 +99,16 @@ export function parseWeewarMap(xmlString: string): GameMap {
     );
   }
 
-  return { name, width, height, tiles, startingUnits, startingBases };
+  return {
+    name,
+    width,
+    height,
+    initialCredits,
+    perBaseCredits,
+    tiles,
+    startingUnits,
+    startingBases,
+  };
 }
 
 export function coerceFaction(raw: string | null | undefined): FactionId | null {

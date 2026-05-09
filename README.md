@@ -70,18 +70,22 @@ brumachlys/
 ## How to play (hot-seat)
 
 1. **Round 1, Player 1 plans**: tap one of your amber units → its movement range (amber tint) and visible enemies in attack range (red tint) appear. Tap a tinted hex to queue a move; tap a red enemy to queue an attack. Use the bottom panel to set stance (`AGG | DEF | HOLD`).
-2. Tap **Commit Orders →**. A black overlay appears: pass the device. Tap once, then `I am Player 2 — Reveal`.
-3. Player 2 plans the same way (in teal). Tap **Commit**.
-4. The resolver runs and the replay animates events in initiative order. Adjust speed (`0.5× / 1× / 2× / ⏭`) or skip.
-5. Repeat until one faction has no units → win banner appears with **New game**.
+2. **Build**: tap one of your empty bases (when no unit is selected) → the bottom panel shows unit options with costs. Tap to queue a buy; the unit spawns at end of round.
+3. Tap **Commit Orders →**. A black overlay appears: pass the device. Tap once, then `I am Player 2 — Reveal`.
+4. Player 2 plans the same way (in teal). Tap **Commit**.
+5. The resolver runs and the replay animates events in initiative order. Adjust speed (`0.5× / 1× / 2× / ⏭`) or skip.
+6. Repeat until one faction has no units → win banner appears with **New game**.
 
 Controls cheat-sheet:
 
 - Tap own unit: select / deselect.
+- Tap own empty base (no unit selected): enter build mode.
 - Tap reachable amber hex: queue move there.
 - Tap red enemy: queue attack on it.
 - Tap stance pill: cycle `AGG → DEF → HOLD`.
 - Tap ✕ next to a queued order: remove it.
+
+**Economy:** each owned base produces credits per round (`perBaseCredits` from the map XML — Three Ways pays 200/base, Aruba pays 100/base). Both factions start with `initialCredits`. Infantry costs ¢75, tank costs ¢300. Capture is not implemented in v0.2 — neutral bases stay neutral.
 
 ## Lineage and licensing
 

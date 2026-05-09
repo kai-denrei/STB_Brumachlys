@@ -18,6 +18,8 @@ function makeMap(spec: Record<string, TerrainKey>): GameMap {
     name: 'test',
     width: 99,
     height: 99,
+    initialCredits: 0,
+    perBaseCredits: 0,
     tiles: new Map(Object.entries(spec)),
     startingUnits: [],
     startingBases: [],
@@ -43,7 +45,11 @@ function plainsField(width: number, height: number): Record<string, TerrainKey> 
   return out;
 }
 
-function state(units: UnitInstance[], map?: GameMap): GameState {
+function state(
+  units: UnitInstance[],
+  map?: GameMap,
+  credits: Record<0 | 1, number> = { 0: 0, 1: 0 },
+): GameState {
   return {
     round: 1,
     phase: 'resolution',
@@ -53,6 +59,26 @@ function state(units: UnitInstance[], map?: GameMap): GameState {
     pendingOrders: { 0: [], 1: [] },
     rngSeed: 1,
     log: [],
+    credits,
+    unitIdCounter: 100,
+  };
+}
+
+function makeMapWithBases(
+  spec: Record<string, TerrainKey>,
+  bases: Array<{ hex: { q: number; r: number }; faction: 0 | 1 | null }>,
+  perBaseCredits = 100,
+  initialCredits = 200,
+): GameMap {
+  return {
+    name: 'test',
+    width: 99,
+    height: 99,
+    initialCredits,
+    perBaseCredits,
+    tiles: new Map(Object.entries(spec)),
+    startingUnits: [],
+    startingBases: bases,
   };
 }
 
@@ -292,5 +318,140 @@ describe('resolveRound — determinism (§11.3)', () => {
     if (newState.units.t) {
       expect(newState.units.t.attackedFromHexes).toEqual([]);
     }
+  });
+});
+
+describe('resolveRound — Phase E economy', () => {
+  test('per-owned-base income added at end of round', () => {
+    const map = makeMapWithBases(
+      { '0,0': 'base', '1,0': 'base', '2,0': 'base' },
+      [
+        { hex: { q: 0, r: 0 }, faction: 0 },
+        { hex: { q: 1, r: 0 }, faction: 1 },
+        { hex: { q: 2, r: 0 }, faction: null }, // neutral, no income
+      ],
+      150,
+    );
+    const s = state([], map, { 0: 50, 1: 50 });
+    const { newState, log } = resolveRound(s, [], [], unitTypes);
+    expect(newState.credits[0]).toBe(50 + 150);
+    expect(newState.credits[1]).toBe(50 + 150);
+    const incomeEvents = log.filter((e) => e.type === 'income');
+    expect(incomeEvents.length).toBe(2);
+  });
+
+  test('buy spawns a unit at the owned base and deducts cost', () => {
+    const baseHex = { q: 0, r: 0 };
+    const map = makeMapWithBases(
+      { '0,0': 'base', '1,0': 'plains' },
+      [{ hex: baseHex, faction: 0 }],
+      0,
+    );
+    const s = state([], map, { 0: 200, 1: 0 });
+    const { newState, log } = resolveRound(
+      s,
+      [{ kind: 'buy', baseHex, unitTypeKey: 'infantry' }],
+      [],
+      unitTypes,
+    );
+    // Infantry costs 75 → credits 200 - 75 = 125
+    expect(newState.credits[0]).toBe(125);
+    const spawned = Object.values(newState.units);
+    expect(spawned.length).toBe(1);
+    expect(spawned[0]!.faction).toBe(0);
+    expect(spawned[0]!.type).toBe('infantry');
+    expect(spawned[0]!.hex).toEqual(baseHex);
+    expect(spawned[0]!.count).toBe(10);
+    const evt = log.find((e) => e.type === 'unit-spawned');
+    expect(evt).toBeDefined();
+  });
+
+  test('buy at base owned by another faction fizzles', () => {
+    const baseHex = { q: 0, r: 0 };
+    const map = makeMapWithBases(
+      { '0,0': 'base' },
+      [{ hex: baseHex, faction: 1 }],
+      0,
+    );
+    const s = state([], map, { 0: 500, 1: 0 });
+    const { newState, log } = resolveRound(
+      s,
+      [{ kind: 'buy', baseHex, unitTypeKey: 'infantry' }],
+      [],
+      unitTypes,
+    );
+    expect(newState.credits[0]).toBe(500);
+    expect(Object.values(newState.units).length).toBe(0);
+    expect(log.some((e) => e.type === 'buy-fizzled')).toBe(true);
+  });
+
+  test('buy fizzles when insufficient credits', () => {
+    const baseHex = { q: 0, r: 0 };
+    const map = makeMapWithBases(
+      { '0,0': 'base' },
+      [{ hex: baseHex, faction: 0 }],
+      0,
+    );
+    const s = state([], map, { 0: 10, 1: 0 }); // < 75 (infantry cost)
+    const { newState, log } = resolveRound(
+      s,
+      [{ kind: 'buy', baseHex, unitTypeKey: 'infantry' }],
+      [],
+      unitTypes,
+    );
+    expect(newState.credits[0]).toBe(10);
+    expect(Object.values(newState.units).length).toBe(0);
+    expect(log.some((e) => e.type === 'buy-fizzled')).toBe(true);
+  });
+
+  test('buy fizzles when base hex is occupied at end of resolver', () => {
+    const baseHex = { q: 0, r: 0 };
+    const map = makeMapWithBases(
+      { '0,0': 'base', '1,0': 'plains' },
+      [{ hex: baseHex, faction: 0 }],
+      0,
+    );
+    const sitter = unit('sitter', 'infantry', 0, baseHex);
+    const s = state([sitter], map, { 0: 500, 1: 0 });
+    const { newState, log } = resolveRound(
+      s,
+      [{ kind: 'buy', baseHex, unitTypeKey: 'infantry' }],
+      [],
+      unitTypes,
+    );
+    expect(newState.credits[0]).toBe(500);
+    // Only the sitter — no spawn
+    expect(Object.keys(newState.units).length).toBe(1);
+    expect(log.some((e) => e.type === 'buy-fizzled')).toBe(true);
+  });
+
+  test('income arrives BEFORE round increment so next round planner sees it', () => {
+    const baseHex = { q: 0, r: 0 };
+    const map = makeMapWithBases(
+      { '0,0': 'base' },
+      [{ hex: baseHex, faction: 0 }],
+      75, // exactly one infantry's cost
+    );
+    const s = state([], map, { 0: 0, 1: 0 });
+    // Cannot buy on round 1 (zero credits), but can next round
+    const { newState } = resolveRound(s, [], [], unitTypes);
+    expect(newState.credits[0]).toBe(75);
+  });
+
+  test('determinism with economy: same input → same output', () => {
+    const baseHex = { q: 0, r: 0 };
+    const map = makeMapWithBases(
+      { '0,0': 'base', '1,0': 'plains' },
+      [{ hex: baseHex, faction: 0 }],
+      100,
+    );
+    const s = state([], map, { 0: 200, 1: 200 });
+    const orders0 = [
+      { kind: 'buy' as const, baseHex, unitTypeKey: 'infantry' },
+    ];
+    const r1 = resolveRound(s, orders0, [], unitTypes);
+    const r2 = resolveRound(s, orders0, [], unitTypes);
+    expect(JSON.stringify(r1.log)).toBe(JSON.stringify(r2.log));
+    expect(r1.newState.credits).toEqual(r2.newState.credits);
   });
 });

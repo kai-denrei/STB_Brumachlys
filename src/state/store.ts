@@ -39,6 +39,7 @@ type Store = {
 
   // UI state
   selectedUnitId: string | null;
+  selectedBaseHex: Hex | null;
   hoveredHex: Hex | null;
 
   // Handoff / replay state
@@ -51,6 +52,7 @@ type Store = {
   initGame: (mapXml: string, seed?: number, mapId?: string) => void;
   startGameByMapId: (mapId: string, seed?: number) => void;
   selectUnit: (id: string | null) => void;
+  selectBase: (hex: Hex | null) => void;
   setHover: (hex: Hex | null) => void;
 
   queueOrder: (faction: FactionId, order: Order) => void;
@@ -59,6 +61,7 @@ type Store = {
     unitId: string,
     kind: Order['kind'],
   ) => void;
+  removeBuyAt: (faction: FactionId, baseHex: Hex) => void;
   cycleStance: (unitId: string) => void;
 
   commitOrders: () => void;       // P1 commits → starts handoff
@@ -136,6 +139,7 @@ export const useStore = create<Store>((set, get) => ({
   discovered: { 0: new Set(), 1: new Set() },
 
   selectedUnitId: null,
+  selectedBaseHex: null,
   hoveredHex: null,
 
   handoffStage: 'none',
@@ -156,6 +160,10 @@ export const useStore = create<Store>((set, get) => ({
       pendingOrders: emptyOrders(),
       rngSeed: seed,
       log: [],
+      credits: { 0: map.initialCredits, 1: map.initialCredits },
+      // Start the spawn counter past any starting-unit IDs (`u0-0`, `u1-1`, …)
+      // to prevent collisions when bought units are added.
+      unitIdCounter: Object.keys(units).length + 100,
     };
     set({
       game,
@@ -163,6 +171,7 @@ export const useStore = create<Store>((set, get) => ({
       initialUnitsSnapshot: structuredClone(units),
       discovered: seedDiscovered(game, get().unitTypes),
       selectedUnitId: null,
+      selectedBaseHex: null,
       hoveredHex: null,
       handoffStage: 'none',
       replayCursor: 0,
@@ -179,16 +188,24 @@ export const useStore = create<Store>((set, get) => ({
     get().initGame(entry.xml, seed, mapId);
   },
 
-  selectUnit: (id) => set({ selectedUnitId: id }),
+  selectUnit: (id) => set({ selectedUnitId: id, selectedBaseHex: null }),
+  selectBase: (hex) => set({ selectedBaseHex: hex, selectedUnitId: null }),
   setHover: (hex) => set({ hoveredHex: hex }),
 
   // ── Order queue ─────────────────────────────────────────────────────────
   queueOrder: (faction, order) => {
     const game = get().game;
     if (!game) return;
-    const list = game.pendingOrders[faction].filter(
-      (o) => !(o.unitId === order.unitId && o.kind === order.kind),
-    );
+    // Dedup: buy orders by baseHex; everything else by (unitId, kind).
+    const list = game.pendingOrders[faction].filter((o) => {
+      if (order.kind === 'buy' && o.kind === 'buy') {
+        return !(o.baseHex.q === order.baseHex.q && o.baseHex.r === order.baseHex.r);
+      }
+      if (order.kind !== 'buy' && o.kind !== 'buy') {
+        return !(o.unitId === order.unitId && o.kind === order.kind);
+      }
+      return true;
+    });
     list.push(order);
     set({
       game: {
@@ -202,7 +219,22 @@ export const useStore = create<Store>((set, get) => ({
     const game = get().game;
     if (!game) return;
     const list = game.pendingOrders[faction].filter(
-      (o) => !(o.unitId === unitId && o.kind === kind),
+      (o) => o.kind === 'buy' || !(o.unitId === unitId && o.kind === kind),
+    );
+    set({
+      game: {
+        ...game,
+        pendingOrders: { ...game.pendingOrders, [faction]: list },
+      },
+    });
+  },
+
+  removeBuyAt: (faction, baseHex) => {
+    const game = get().game;
+    if (!game) return;
+    const list = game.pendingOrders[faction].filter(
+      (o) =>
+        !(o.kind === 'buy' && o.baseHex.q === baseHex.q && o.baseHex.r === baseHex.r),
     );
     set({
       game: {
@@ -221,7 +253,7 @@ export const useStore = create<Store>((set, get) => ({
     // Queue a stance order rather than mutating directly — applied in resolver.
     const faction = u.faction;
     const list = game.pendingOrders[faction].filter(
-      (o) => !(o.unitId === unitId && o.kind === 'stance'),
+      (o) => !(o.kind === 'stance' && o.unitId === unitId),
     );
     list.push({ kind: 'stance', unitId, stance: nextStance });
     set({
@@ -325,11 +357,14 @@ export const useStore = create<Store>((set, get) => ({
       pendingOrders: emptyOrders(),
       rngSeed: 1,
       log: [],
+      credits: { 0: cur.map.initialCredits, 1: cur.map.initialCredits },
+      unitIdCounter: Object.keys(snapshot).length + 100,
     };
     set({
       game,
       discovered: seedDiscovered(game, get().unitTypes),
       selectedUnitId: null,
+      selectedBaseHex: null,
       hoveredHex: null,
       handoffStage: 'none',
       replayCursor: 0,

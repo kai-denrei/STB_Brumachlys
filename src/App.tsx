@@ -18,7 +18,9 @@ export function App() {
   const unitTypes = useStore((s) => s.unitTypes);
   const startGameByMapId = useStore((s) => s.startGameByMapId);
   const selectedUnitId = useStore((s) => s.selectedUnitId);
+  const selectedBaseHex = useStore((s) => s.selectedBaseHex);
   const selectUnit = useStore((s) => s.selectUnit);
+  const selectBase = useStore((s) => s.selectBase);
   const queueOrder = useStore((s) => s.queueOrder);
   const handoffStage = useStore((s) => s.handoffStage);
   const finishReplay = useStore((s) => s.finishReplay);
@@ -111,39 +113,65 @@ export function App() {
     if (!game || planner === null || game.phase !== 'planning') return;
     const k = hexKey(hex);
 
-    // Tap on a unit at this hex
     const unitHere = Object.values(game.units).find(
       (u) => u.hex.q === hex.q && u.hex.r === hex.r,
     );
+    const baseHere = game.map.startingBases.find(
+      (b) => b.hex.q === hex.q && b.hex.r === hex.r,
+    );
+    const isOwnEmptyBase = baseHere?.faction === planner && !unitHere;
 
-    // No unit selected yet: tap a friendly unit to select
-    if (!selectedUnit) {
+    // ─ No unit/base selected ─────────────────────────────────────────────
+    if (!selectedUnit && !selectedBaseHex) {
       if (unitHere && unitHere.faction === planner) {
         selectUnit(unitHere.id);
+      } else if (isOwnEmptyBase) {
+        selectBase(hex);
       }
       return;
     }
 
-    // Tap the same unit again → deselect
+    // ─ Base is selected (build mode) ─────────────────────────────────────
+    if (selectedBaseHex) {
+      // Tap same base → deselect
+      if (selectedBaseHex.q === hex.q && selectedBaseHex.r === hex.r) {
+        selectBase(null);
+        return;
+      }
+      // Tap a friendly unit → switch to unit selection
+      if (unitHere && unitHere.faction === planner) {
+        selectUnit(unitHere.id);
+        return;
+      }
+      // Tap another own empty base → switch to that base
+      if (isOwnEmptyBase) {
+        selectBase(hex);
+        return;
+      }
+      // Anything else → deselect
+      selectBase(null);
+      return;
+    }
+
+    // ─ Unit is selected (existing flow) ──────────────────────────────────
+    if (!selectedUnit) return;
+
     if (unitHere && unitHere.id === selectedUnit.id) {
       selectUnit(null);
       return;
     }
 
-    // Tap another friendly unit → switch selection
     if (unitHere && unitHere.faction === planner) {
       selectUnit(unitHere.id);
       return;
     }
 
-    // Tap a visible enemy in attack range → queue attack
     if (unitHere && unitHere.faction !== planner && attackable.has(k)) {
       queueOrder(planner, { kind: 'attack', unitId: selectedUnit.id, targetHex: hex });
       selectUnit(null);
       return;
     }
 
-    // Tap a reachable empty hex → queue move
     if (!unitHere && reachable.has(k) && selectedUnitType) {
       const pathResult = findPath(
         game.map,
@@ -163,6 +191,13 @@ export function App() {
       }
       return;
     }
+
+    // Tap an own empty base while a unit is selected (and the base is not
+    // reachable) → switch to build mode on that base.
+    if (isOwnEmptyBase) {
+      selectBase(hex);
+      return;
+    }
   }
 
   if (!game) {
@@ -176,6 +211,7 @@ export function App() {
   }
 
   const pendingCount = planner !== null ? game.pendingOrders[planner].length : 0;
+  const plannerCredits = planner !== null ? game.credits[planner] : undefined;
 
   // ── Replay phase: animate the resolver's event log ──────────────────────
   if (game.phase === 'replay') {
@@ -194,7 +230,13 @@ export function App() {
 
   return (
     <main className="game-shell">
-      <Hud round={game.round} phase={game.phase} player={planner} pendingCount={pendingCount} />
+      <Hud
+        round={game.round}
+        phase={game.phase}
+        player={planner}
+        pendingCount={pendingCount}
+        credits={plannerCredits}
+      />
       <Board
         state={game}
         unitTypes={unitTypes}
@@ -202,7 +244,7 @@ export function App() {
         currentVisible={currentVisible}
         discovered={planner !== null ? discoveredByFaction[planner] : undefined}
         highlights={{
-          selectedHex: selectedUnit?.hex ?? null,
+          selectedHex: selectedUnit?.hex ?? selectedBaseHex ?? null,
           reachableHexes: reachable,
           attackableHexes: attackable,
           plannedPaths,
@@ -214,8 +256,11 @@ export function App() {
         <OrderPanel
           selectedUnit={selectedUnit}
           unitType={selectedUnitType}
+          selectedBaseHex={selectedBaseHex}
           pendingOrders={game.pendingOrders[planner]}
           faction={planner}
+          credits={game.credits[planner]}
+          unitTypes={unitTypes}
         />
       )}
       {handoffStage !== 'none' && <Handoff />}
