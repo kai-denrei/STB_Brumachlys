@@ -203,15 +203,80 @@ export const useStore = create<Store>((set, get) => ({
   queueOrder: (faction, order) => {
     const game = get().game;
     if (!game) return;
-    // Dedup: buy orders by baseHex; everything else by (unitId, kind).
+
+    // Buy: pre-spawn the unit and deduct credits at queue time so the player
+    // sees the new unit immediately. The resolver still processes the order
+    // at end of round (idempotently — it skips the spawn when the unit is
+    // already in state) so the replay log stays uniform.
+    if (order.kind === 'buy') {
+      const unitTypes = get().unitTypes;
+      const ut = unitTypes[order.unitTypeKey];
+      if (!ut) return;
+      // Validate: own base, empty hex, sufficient credits.
+      const base = game.map.startingBases.find(
+        (b) => b.hex.q === order.baseHex.q && b.hex.r === order.baseHex.r,
+      );
+      if (!base || base.faction !== faction) return;
+      const occupant = Object.values(game.units).find(
+        (u) => u.hex.q === order.baseHex.q && u.hex.r === order.baseHex.r,
+      );
+      if (occupant) return;
+      if (game.credits[faction] < ut.cost) return;
+
+      const newId = `u${faction}-${game.unitIdCounter}`;
+      const newUnit: UnitInstance = {
+        id: newId,
+        type: order.unitTypeKey,
+        faction,
+        hex: { q: order.baseHex.q, r: order.baseHex.r },
+        count: 10,
+        stance: 'aggressive',
+        attackedFromHexes: [],
+      };
+      // Dedup: at most one buy per base. Replacing a queued buy at the same
+      // base also rolls back its pre-spawned unit + refund.
+      const existing = game.pendingOrders[faction].find(
+        (o) =>
+          o.kind === 'buy' &&
+          o.baseHex.q === order.baseHex.q &&
+          o.baseHex.r === order.baseHex.r,
+      ) as Extract<Order, { kind: 'buy' }> | undefined;
+
+      const filteredUnits = { ...game.units };
+      let refundedCredits = game.credits[faction];
+      if (existing) {
+        const prevUt = unitTypes[existing.unitTypeKey];
+        if (existing.unitId && filteredUnits[existing.unitId]) {
+          delete filteredUnits[existing.unitId];
+        }
+        if (prevUt) refundedCredits += prevUt.cost;
+      }
+      const list = game.pendingOrders[faction].filter(
+        (o) =>
+          !(
+            o.kind === 'buy' &&
+            o.baseHex.q === order.baseHex.q &&
+            o.baseHex.r === order.baseHex.r
+          ),
+      );
+      list.push({ ...order, unitId: newId });
+
+      set({
+        game: {
+          ...game,
+          units: { ...filteredUnits, [newId]: newUnit },
+          credits: { ...game.credits, [faction]: refundedCredits - ut.cost },
+          unitIdCounter: game.unitIdCounter + 1,
+          pendingOrders: { ...game.pendingOrders, [faction]: list },
+        },
+      });
+      return;
+    }
+
+    // Non-buy orders: dedup by (unitId, kind), no state mutation beyond the queue.
     const list = game.pendingOrders[faction].filter((o) => {
-      if (order.kind === 'buy' && o.kind === 'buy') {
-        return !(o.baseHex.q === order.baseHex.q && o.baseHex.r === order.baseHex.r);
-      }
-      if (order.kind !== 'buy' && o.kind !== 'buy') {
-        return !(o.unitId === order.unitId && o.kind === order.kind);
-      }
-      return true;
+      if (o.kind === 'buy') return true;
+      return !(o.unitId === order.unitId && o.kind === order.kind);
     });
     list.push(order);
     set({
@@ -239,13 +304,35 @@ export const useStore = create<Store>((set, get) => ({
   removeBuyAt: (faction, baseHex) => {
     const game = get().game;
     if (!game) return;
+    // Find the buy order at this base; un-spawn the unit and refund credits.
+    const buy = game.pendingOrders[faction].find(
+      (o) =>
+        o.kind === 'buy' && o.baseHex.q === baseHex.q && o.baseHex.r === baseHex.r,
+    ) as Extract<Order, { kind: 'buy' }> | undefined;
+
     const list = game.pendingOrders[faction].filter(
       (o) =>
         !(o.kind === 'buy' && o.baseHex.q === baseHex.q && o.baseHex.r === baseHex.r),
     );
+
+    let units = game.units;
+    let credits = game.credits;
+    if (buy) {
+      const ut = get().unitTypes[buy.unitTypeKey];
+      if (buy.unitId && game.units[buy.unitId]) {
+        const { [buy.unitId]: _removed, ...rest } = game.units;
+        units = rest;
+      }
+      if (ut) {
+        credits = { ...game.credits, [faction]: game.credits[faction] + ut.cost };
+      }
+    }
+
     set({
       game: {
         ...game,
+        units,
+        credits,
         pendingOrders: { ...game.pendingOrders, [faction]: list },
       },
     });

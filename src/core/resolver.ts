@@ -296,6 +296,23 @@ export function resolveRound(
         });
         continue;
       }
+      // Pre-spawned path (production): the order carries a `unitId` and the
+      // store already mutated state at queue time. Skip the spawn + the
+      // credit deduction (both already applied), but still log the event so
+      // replay logic stays uniform.
+      if (o.unitId && next.units[o.unitId]) {
+        log.push({
+          type: 'unit-spawned',
+          unitId: o.unitId,
+          faction: f,
+          unitTypeKey: o.unitTypeKey,
+          hex: { q: o.baseHex.q, r: o.baseHex.r },
+          cost: ut.cost,
+        });
+        continue;
+      }
+      // Fresh-spawn path (test fixtures / legacy without pre-spawn). Validate
+      // affordability since credits weren't deducted yet.
       if (next.credits[f] < ut.cost) {
         log.push({
           type: 'buy-fizzled',
@@ -306,8 +323,7 @@ export function resolveRound(
         });
         continue;
       }
-      // OK to spawn
-      const newId = `u${f}-${next.unitIdCounter++}`;
+      const newId = o.unitId ?? `u${f}-${next.unitIdCounter++}`;
       next.units[newId] = {
         id: newId,
         type: o.unitTypeKey,

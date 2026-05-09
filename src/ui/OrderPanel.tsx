@@ -55,14 +55,10 @@ export function OrderPanel({
       )
     : [];
 
-  // Cumulative cost of all queued buys this round; subtract from credits to show
-  // what's still spendable.
-  const queuedBuyCost = pendingOrders.reduce((acc, o) => {
-    if (o.kind !== 'buy') return acc;
-    const ut = unitTypes[o.unitTypeKey];
-    return acc + (ut?.cost ?? 0);
-  }, 0);
-  const spendable = credits - queuedBuyCost;
+  // Credits are deducted at queue time (the buy pre-spawns the unit), so the
+  // live `credits` value IS the spendable balance — no cumulative-reservation
+  // subtraction needed.
+  const spendable = credits;
 
   const queuedBuyAtBase = selectedBaseHex
     ? (pendingOrders.find(
