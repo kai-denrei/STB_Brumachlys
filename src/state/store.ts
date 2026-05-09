@@ -5,6 +5,7 @@ import { create } from 'zustand';
 import { resolveRound } from '../core/resolver.ts';
 import { parseWeewarMap } from '../io/weewar-xml.ts';
 import { loadUnits, loadTerrain } from '../io/data-loader.ts';
+import { mapById } from '../io/maps.ts';
 import type {
   GameState,
   GameMap,
@@ -27,6 +28,7 @@ type Store = {
 
   // Game state
   game: GameState | null;
+  currentMapId: string | null;
   initialUnitsSnapshot: Record<string, UnitInstance> | null; // for new-game reset
 
   // UI state
@@ -40,7 +42,8 @@ type Store = {
   replayPaused: boolean;
 
   // Actions
-  initGame: (mapXml: string, seed?: number) => void;
+  initGame: (mapXml: string, seed?: number, mapId?: string) => void;
+  startGameByMapId: (mapId: string, seed?: number) => void;
   selectUnit: (id: string | null) => void;
   setHover: (hex: Hex | null) => void;
 
@@ -62,7 +65,7 @@ type Store = {
   toggleReplayPause: () => void;
   advanceReplay: (delta: number) => void;
   finishReplay: () => void;        // skip to end and enter next round's planning
-  newGame: (mapXml?: string) => void; // reset to round 1 with the same or new map
+  newGame: (mapId?: string) => void; // reset to round 1 with the same or specified map
 };
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -100,6 +103,7 @@ export const useStore = create<Store>((set, get) => ({
   terrainTypes: loadTerrain(),
 
   game: null,
+  currentMapId: null,
   initialUnitsSnapshot: null,
 
   selectedUnitId: null,
@@ -111,7 +115,7 @@ export const useStore = create<Store>((set, get) => ({
   replayPaused: true,
 
   // ── Init ────────────────────────────────────────────────────────────────
-  initGame: (mapXml, seed = 1) => {
+  initGame: (mapXml, seed = 1, mapId = null as string | null as unknown as string) => {
     const map = parseWeewarMap(mapXml);
     const units = buildInitialUnits(map);
     const game: GameState = {
@@ -126,6 +130,7 @@ export const useStore = create<Store>((set, get) => ({
     };
     set({
       game,
+      currentMapId: mapId ?? null,
       initialUnitsSnapshot: structuredClone(units),
       selectedUnitId: null,
       hoveredHex: null,
@@ -133,6 +138,15 @@ export const useStore = create<Store>((set, get) => ({
       replayCursor: 0,
       replayPaused: true,
     });
+  },
+
+  startGameByMapId: (mapId, seed = 1) => {
+    const entry = mapById(mapId);
+    if (!entry) {
+      console.warn(`startGameByMapId: unknown map "${mapId}"`);
+      return;
+    }
+    get().initGame(entry.xml, seed, mapId);
   },
 
   selectUnit: (id) => set({ selectedUnitId: id }),
@@ -259,9 +273,9 @@ export const useStore = create<Store>((set, get) => ({
     } as unknown as Partial<Store>);
   },
 
-  newGame: (mapXml) => {
-    if (mapXml) {
-      get().initGame(mapXml);
+  newGame: (mapId) => {
+    if (mapId) {
+      get().startGameByMapId(mapId);
       return;
     }
     // Reuse the current map but reset units/round/orders.

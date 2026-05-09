@@ -138,6 +138,34 @@ em {
   width: 100%;
   height: 100%;
   cursor: crosshair;
+  /* Disable browser pan/zoom so our own pointer logic can own the gestures. */
+  touch-action: none;
+}
+
+.board-reset-view {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  z-index: 10;
+  width: 2rem;
+  height: 2rem;
+  background: rgba(26, 27, 30, 0.85);
+  border: 1px solid var(--hairline);
+  color: var(--accent-faction-0);
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  font-weight: 700;
+  border-radius: 2px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  line-height: 1;
+}
+
+.board-reset-view:active {
+  background: rgba(26, 27, 30, 1);
 }
 
 /* ── Order panel ────────────────────────────────────────────────────────── */
@@ -487,19 +515,48 @@ em {
   font-size: 0.75rem;
 }
 
-.win-newgame {
-  margin-top: 0.6rem;
-  background: var(--accent-faction-0);
-  color: #0E0F10;
-  border: none;
-  padding: 0.7rem 1.4rem;
+.win-map-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin-top: 0.5rem;
+  width: min(360px, 90vw);
+}
+
+.win-map-btn {
+  background: var(--bg-elev);
+  color: var(--fg-text);
+  border: 1px solid var(--accent-faction-0);
+  padding: 0.7rem 1rem;
   font-family: var(--font-mono);
-  font-size: 0.85rem;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  font-size: 0.8rem;
+  letter-spacing: 0.05em;
   border-radius: 2px;
   cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+  align-items: flex-start;
+  text-align: left;
+  transition: background 120ms;
+}
+
+.win-map-btn:hover,
+.win-map-btn:active {
+  background: rgba(232, 154, 60, 0.12);
+}
+
+.win-map-name {
+  font-weight: 700;
+  color: var(--accent-faction-0);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-size: 0.85rem;
+}
+
+.win-map-blurb {
+  color: var(--fg-muted);
+  font-size: 0.72rem;
 }
 
 /* ── PWA toasts ─────────────────────────────────────────────────────────── */

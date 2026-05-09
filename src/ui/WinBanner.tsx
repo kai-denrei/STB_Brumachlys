@@ -1,10 +1,11 @@
 import type { FactionId, GameState } from '../core/types.ts';
+import { MAPS } from '../io/maps.ts';
 
 const FACTION_NAME: Record<FactionId, string> = { 0: 'Ember', 1: 'Iron' };
 
 type Props = {
   state: GameState;
-  onNewGame: () => void;
+  onNewGame: (mapId?: string) => void;
 };
 
 export function WinBanner({ state, onNewGame }: Props) {
@@ -27,9 +28,19 @@ export function WinBanner({ state, onNewGame }: Props) {
         ) : (
           <h2 className="win-title">Stalemate</h2>
         )}
-        <button className="win-newgame" onClick={onNewGame}>
-          New game
-        </button>
+        <p className="win-sub" style={{ marginTop: '0.6rem' }}>Pick a map for the next game</p>
+        <div className="win-map-row">
+          {MAPS.map((m) => (
+            <button
+              key={m.id}
+              className="win-map-btn"
+              onClick={() => onNewGame(m.id)}
+            >
+              <span className="win-map-name">{m.name}</span>
+              <span className="win-map-blurb">{m.blurb}</span>
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );
