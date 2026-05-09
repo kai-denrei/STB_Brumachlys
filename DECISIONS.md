@@ -89,6 +89,8 @@ If no enemy in range: silent skip (no `lost-target` log entry — that's reserve
 ### B.16 Damage application during exchange (one-tick)
 `battleExchange` computes both attacker→defender damage AND counter against STARTING counts of the exchange, then applies both simultaneously. This matches §3.3 verbatim. The accumulator (`attackedFromHexes`) is appended AFTER the strike, and the counter does not contribute its own hex to that accumulator.
 
+### B.13–B.17 (economy and beyond — see §C below for the v0.2 economy decisions)
+
 ### B.17 Move-conflict execution detail
 The resolver walks the planned path step-by-step in init order (so high-init units resolve first). At each step:
 - enemy unit at next hex → stop here (don't enter)
@@ -239,4 +241,82 @@ VitePWA({
 
 ---
 
-*End of decisions. Engineer: any question this document does not answer is by definition out-of-scope for v1 scaffold — punt to a `// TODO(phase-N)` and keep moving.*
+*End of v1 decisions. Engineer: any question this document does not answer is by definition out-of-scope for v1 scaffold — punt to a `// TODO(phase-N)` and keep moving.*
+
+---
+
+## §C — v0.2 Economy
+
+The PoC explicitly excluded credits / building (spec §1.3). v0.2 adds the
+minimum-viable economy: per-base income, buy orders, unit spawning. Capture
+remains out of scope (defer to v0.3) — neutral bases stay neutral.
+
+### C.1 Phase E (Economy) location in the resolver
+Runs at the **end of round**, after Phase B combat, before round increment.
+Two sub-steps in this fixed order:
+
+1. **Buys** — for each `buy` order in `pendingOrders[faction]`, validate (own
+   base, base empty, sufficient credits) and either spawn the unit + deduct
+   the cost, or emit `buy-fizzled`. Order within a faction's buy list is
+   preserved.
+2. **Income** — for each owned base, add `map.perBaseCredits` to that
+   faction's credits, emitting one aggregate `income` event per faction.
+
+**Why buys first:** the player spends what they had at planning time. Income
+arrives next; the next round's planner sees `(credits − spent + income)`.
+This matches the spec's reading "each turn bases produce X credits, credits
+can be used to create units" — produce after the current spend resolves.
+
+### C.2 Buy timing and visibility
+The unit appears in state at end-of-round; the player can move it from the
+**next** round on (consistent with most RTS conventions — newly built units
+don't move on the same turn). The unit-spawned event lands in the replay
+log so players see what was built.
+
+### C.3 No capture in v0.2
+Neutral bases remain neutral indefinitely; there is no "capture" order kind.
+Faction ownership of bases is set at map load and never changes. This is the
+single biggest gameplay simplification — Aruba's two neutral bases are inert.
+Capture is the next obvious feature (§v0.3) but adds: capture order, base
+ownership state, multi-round capture progress, UI for capture status.
+
+### C.4 Buy validation — at submission AND resolver time
+- **At submission** (UI): tap an own empty base while no unit is selected →
+  build panel; only show affordable units (rest disabled). The cumulative
+  cost of all queued buys is subtracted from current credits to compute
+  what's still spendable.
+- **At resolver** (canonical): re-check the four conditions —
+  unknown unit type / base not owned / base occupied / insufficient credits
+  — and emit `buy-fizzled` with a reason if any fail. State may have changed
+  between submission and resolution (a friendly might have moved onto the
+  base, etc.).
+
+### C.5 Spawn ID format and counter
+New units use `u${faction}-${unitIdCounter}` where `unitIdCounter` is a
+monotonic field on `GameState`, initialised to `Object.keys(units).length + 100`
+to avoid collisions with starting-unit IDs (`u0-0`, `u1-1`, …). The counter
+increments on each successful spawn. Mutable but deterministic — the
+sequence is reproducible.
+
+### C.6 One buy per base per round
+Buy orders are dedup'd by `baseHex` (a base can only produce one unit per
+round). Submitting a second buy at the same base **replaces** the first
+(consistent with how move orders dedup by `unitId`).
+
+### C.7 Build UI flow
+Tap own empty base while no unit is selected → enter build mode. Build mode
+shows a list of unit types with cost; tap to queue. Tapping the base again,
+or any non-base hex, exits build mode. Selecting a unit while a base is
+selected switches modes. The board's selection ring renders on the selected
+base hex too (uses the existing `selectedHex` highlight).
+
+### C.8 Stance default for spawned units
+`aggressive`. Same default as starting units (§4.1, DECISIONS §B.14).
+Players can change next round.
+
+### C.9 Buy cost reservation in UI
+The `BuildPanel`'s "spendable" balance is `credits − sum(queuedBuys.cost)`.
+This prevents queueing buys you can't actually afford. Color flips red if
+the figure goes negative (shouldn't happen with the build button gated, but
+the visual cue is there if state drifts).
+

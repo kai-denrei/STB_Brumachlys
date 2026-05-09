@@ -18,6 +18,12 @@ describe('parseWeewarMap — three-ways.xml (corrected per DECISIONS §B.10/B.11
     expect(map.name).toBe('Three ways');
   });
 
+  test('reads economy fields (initialCredits, perBaseCredits)', () => {
+    const map = parseWeewarMap(threeWaysXml);
+    expect(map.initialCredits).toBe(100);
+    expect(map.perBaseCredits).toBe(200);
+  });
+
   test('tiles is sparse — exactly 190 entries (B.11)', () => {
     const map = parseWeewarMap(threeWaysXml);
     expect(map.tiles.size).toBe(190);
@@ -103,6 +109,8 @@ describe('parseWeewarMap — minimal hand-crafted XML', () => {
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
       <map id="99">
         <name>Tiny</name>
+        <initialCredits>0</initialCredits>
+        <perBaseCredits>0</perBaseCredits>
         <width>2</width>
         <height>1</height>
         <maxPlayers>2</maxPlayers>

@@ -12,6 +12,8 @@ function makeMap(spec: Record<string, TerrainKey>): GameMap {
     name: 'test',
     width: 99,
     height: 99,
+    initialCredits: 0,
+    perBaseCredits: 0,
     tiles: new Map(Object.entries(spec)),
     startingUnits: [],
     startingBases: [],

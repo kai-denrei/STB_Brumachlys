@@ -251,7 +251,97 @@ export function resolveRound(
     }
   }
 
-  // ── 4. End-of-round bookkeeping ──────────────────────────────────────────
+  // ── 4. Phase E — Economy ─────────────────────────────────────────────────
+  // Buys first (so the player spends THIS round's pre-existing credits),
+  // then per-base income. Result: next round's planner sees leftover + income.
+  const factionList: FactionId[] = [0, 1];
+  for (const f of factionList) {
+    const orders = f === 0 ? ordersP1 : ordersP2;
+    for (const o of orders) {
+      if (o.kind !== 'buy') continue;
+      const ut = unitTypes[o.unitTypeKey];
+      if (!ut) {
+        log.push({
+          type: 'buy-fizzled',
+          faction: f,
+          baseHex: o.baseHex,
+          unitTypeKey: o.unitTypeKey,
+          reason: 'unknown unit type',
+        });
+        continue;
+      }
+      const base = next.map.startingBases.find(
+        (b) => b.hex.q === o.baseHex.q && b.hex.r === o.baseHex.r,
+      );
+      if (!base || base.faction !== f) {
+        log.push({
+          type: 'buy-fizzled',
+          faction: f,
+          baseHex: o.baseHex,
+          unitTypeKey: o.unitTypeKey,
+          reason: 'base not owned',
+        });
+        continue;
+      }
+      const occupant = Object.values(next.units).find(
+        (u) => u.hex.q === o.baseHex.q && u.hex.r === o.baseHex.r,
+      );
+      if (occupant) {
+        log.push({
+          type: 'buy-fizzled',
+          faction: f,
+          baseHex: o.baseHex,
+          unitTypeKey: o.unitTypeKey,
+          reason: 'base occupied',
+        });
+        continue;
+      }
+      if (next.credits[f] < ut.cost) {
+        log.push({
+          type: 'buy-fizzled',
+          faction: f,
+          baseHex: o.baseHex,
+          unitTypeKey: o.unitTypeKey,
+          reason: 'insufficient credits',
+        });
+        continue;
+      }
+      // OK to spawn
+      const newId = `u${f}-${next.unitIdCounter++}`;
+      next.units[newId] = {
+        id: newId,
+        type: o.unitTypeKey,
+        faction: f,
+        hex: { q: o.baseHex.q, r: o.baseHex.r },
+        count: 10,
+        stance: 'aggressive',
+        attackedFromHexes: [],
+      };
+      next.credits[f] -= ut.cost;
+      log.push({
+        type: 'unit-spawned',
+        unitId: newId,
+        faction: f,
+        unitTypeKey: o.unitTypeKey,
+        hex: { q: o.baseHex.q, r: o.baseHex.r },
+        cost: ut.cost,
+      });
+    }
+  }
+
+  for (const f of factionList) {
+    let owned = 0;
+    for (const b of next.map.startingBases) {
+      if (b.faction === f) owned++;
+    }
+    if (owned === 0) continue;
+    const amount = owned * next.map.perBaseCredits;
+    if (amount === 0) continue;
+    next.credits[f] += amount;
+    log.push({ type: 'income', faction: f, amount, bases: owned });
+  }
+
+  // ── 5. End-of-round bookkeeping ──────────────────────────────────────────
   for (const u of Object.values(next.units)) u.attackedFromHexes = [];
 
   next.round = state.round + 1;

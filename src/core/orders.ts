@@ -6,7 +6,11 @@ import type { Hex, Stance, GameState } from './types.ts';
 export type Order =
   | { kind: 'move'; unitId: string; path: Hex[] } // destination hexes only, not start
   | { kind: 'attack'; unitId: string; targetHex: Hex }
-  | { kind: 'stance'; unitId: string; stance: Stance };
+  | { kind: 'stance'; unitId: string; stance: Stance }
+  // 'buy' is faction-implicit (lives in pendingOrders[faction]); spawns at
+  // baseHex at end of round. No unitId because the unit doesn't exist yet —
+  // baseHex is the dedup key (one buy per base per round).
+  | { kind: 'buy'; baseHex: Hex; unitTypeKey: string };
 
 export type ValidationResult =
   | { ok: true }

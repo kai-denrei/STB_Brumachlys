@@ -68,7 +68,24 @@ export function Replay({ oldState, log, unitTypes, onDone }: Props) {
       if (def) def.count = Math.max(0, def.count - e.damage);
     } else if (e.type === 'kill') {
       delete next.units[e.unitId];
+    } else if (e.type === 'unit-spawned') {
+      next.units[e.unitId] = {
+        id: e.unitId,
+        type: e.unitTypeKey,
+        faction: e.faction,
+        hex: { q: e.hex.q, r: e.hex.r },
+        count: 10,
+        stance: 'aggressive',
+        attackedFromHexes: [],
+      };
+      next.credits = { ...next.credits, [e.faction]: next.credits[e.faction] - e.cost };
+    } else if (e.type === 'income') {
+      next.credits = {
+        ...next.credits,
+        [e.faction]: next.credits[e.faction] + e.amount,
+      };
     }
+    // 'lost-target', 'path-truncated', 'buy-fizzled' are flavor — no state change.
     return next;
   }
 
@@ -229,6 +246,12 @@ function describe(e: ResolutionEvent | null, units: Record<string, UnitInstance>
       return `${e.unitId.toUpperCase()} destroyed`;
     case 'lost-target':
       return `${e.attackerId.toUpperCase()} lost target`;
+    case 'unit-spawned':
+      return `${e.unitTypeKey.toUpperCase()} spawned at (${e.hex.q},${e.hex.r}) — ¢${e.cost}`;
+    case 'buy-fizzled':
+      return `Buy ${e.unitTypeKey.toUpperCase()} fizzled — ${e.reason}`;
+    case 'income':
+      return `Income +¢${e.amount} (${e.bases} base${e.bases === 1 ? '' : 's'})`;
   }
   void units;
   return '';
