@@ -12,6 +12,7 @@ import type {
   FactionId,
   UnitType,
   Hex,
+  TerrainKey,
 } from '../core/types.ts';
 
 const FACTION_COLOR: Record<FactionId, string> = {
@@ -19,6 +20,33 @@ const FACTION_COLOR: Record<FactionId, string> = {
   1: '#3FB7B0', // Iron Teal
 };
 const NEUTRAL_RING = '#5A5A55';
+
+// Texture variant keys → file paths under public/textures/. Base tiles pick a
+// variant by faction so the village art reflects ownership at a glance.
+const SQRT3 = Math.sqrt(3);
+const TEXTURE_PATHS: Record<string, string> = {
+  plains: 'textures/plains.jpg',
+  swamp: 'textures/swamp.jpg',
+  woods: 'textures/woods.jpg',
+  mountains: 'textures/mountains.jpg',
+  water: 'textures/water.jpg',
+  'base-neutral': 'textures/base-neutral.jpg',
+  'base-f0': 'textures/base-f0.jpg',
+  'base-f1': 'textures/base-f1.jpg',
+};
+
+function textureKeyForTile(
+  terrain: TerrainKey,
+  hex: Hex,
+  startingBases: GameState['map']['startingBases'],
+): string {
+  if (terrain !== 'base') return terrain;
+  const base = startingBases.find(
+    (b) => b.hex.q === hex.q && b.hex.r === hex.r,
+  );
+  if (!base || base.faction === null) return 'base-neutral';
+  return base.faction === 0 ? 'base-f0' : 'base-f1';
+}
 
 type Highlights = {
   selectedHex?: Hex | null;
@@ -83,6 +111,26 @@ export function Board({
   const SCALE_MAX = 2.5;
   const TAP_THRESHOLD_PX = 8;
   const TAP_MAX_MS = 500;
+
+  const texturesRef = useRef<Map<string, HTMLImageElement>>(new Map());
+
+  // Preload terrain/base textures once on mount. Each load triggers a redraw so
+  // the board fills in progressively without blocking first paint.
+  useEffect(() => {
+    const baseUrl = import.meta.env.BASE_URL ?? '/';
+    for (const [key, path] of Object.entries(TEXTURE_PATHS)) {
+      const img = new Image();
+      img.src = `${baseUrl}${path}`;
+      img.onload = () => {
+        texturesRef.current.set(key, img);
+        draw();
+      };
+      img.onerror = () => {
+        console.warn(`[brumachlys] texture failed to load: ${path}`);
+      };
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Resize observer to keep canvas sized to its container
   useLayoutEffect(() => {
@@ -260,33 +308,58 @@ export function Board({
     const { size } = vp;
 
     // ── Terrain tiles ────────────────────────────────────────────────────
+    // Each tile is built as a Path2D so we can fill, clip-and-drawImage, and
+    // stroke against the same shape without re-pathing.
     ctx.lineWidth = 1;
     ctx.strokeStyle = TERRAIN_STROKE;
+    const hexW = SQRT3 * size;
+    const hexH = 2 * size;
     for (const [k, terrain] of state.map.tiles) {
       const idx = k.indexOf(',');
       const hex: Hex = { q: Number(k.slice(0, idx)), r: Number(k.slice(idx + 1)) };
       const verts = hexVertices(hex, size);
-      ctx.beginPath();
+      const path = new Path2D();
       for (let i = 0; i < verts.length; i++) {
         const v = verts[i]!;
         const x = v[0] + vp.offsetX;
         const y = v[1] + vp.offsetY;
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
+        if (i === 0) path.moveTo(x, y);
+        else path.lineTo(x, y);
       }
-      ctx.closePath();
+      path.closePath();
+
+      // Fallback flat fill (visible until the texture for this biome arrives).
       ctx.fillStyle = TERRAIN_FILL[terrain];
-      ctx.fill();
-      ctx.stroke();
+      ctx.fill(path);
+
+      // Texture overlay clipped to the hex.
+      const texKey = textureKeyForTile(terrain, hex, state.map.startingBases);
+      const tex = texturesRef.current.get(texKey);
+      if (tex && tex.complete && tex.naturalWidth > 0) {
+        const c = hexCenter(hex, size);
+        ctx.save();
+        ctx.clip(path);
+        ctx.drawImage(
+          tex,
+          c.x + vp.offsetX - hexW / 2,
+          c.y + vp.offsetY - size,
+          hexW,
+          hexH,
+        );
+        ctx.restore();
+      }
+
+      // Inter-tile hairline.
+      ctx.stroke(path);
 
       // Highlight overlays
       if (highlights?.reachableHexes?.has(k)) {
-        ctx.fillStyle = 'rgba(232, 154, 60, 0.18)'; // amber translucent
-        ctx.fill();
+        ctx.fillStyle = 'rgba(232, 154, 60, 0.28)'; // amber translucent
+        ctx.fill(path);
       }
       if (highlights?.attackableHexes?.has(k)) {
-        ctx.fillStyle = 'rgba(232, 74, 74, 0.22)'; // red translucent
-        ctx.fill();
+        ctx.fillStyle = 'rgba(232, 74, 74, 0.32)'; // red translucent
+        ctx.fill(path);
       }
       if (
         highlights?.selectedHex &&
@@ -295,7 +368,7 @@ export function Board({
       ) {
         ctx.lineWidth = Math.max(2, size * 0.12);
         ctx.strokeStyle = '#E89A3C';
-        ctx.stroke();
+        ctx.stroke(path);
         ctx.lineWidth = 1;
         ctx.strokeStyle = TERRAIN_STROKE;
       }
@@ -329,12 +402,14 @@ export function Board({
       ctx.stroke();
     }
 
-    // ── Base markers (faction-coloured rings on base tiles) ──────────────
+    // ── Base markers (thin faction-coloured rings as a fallback signal) ──
+    // The village texture already encodes ownership; the ring stays for
+    // legibility on small hexes and during first-load (before textures).
     for (const base of state.map.startingBases) {
       const c = hexCenter(base.hex, size);
       ctx.beginPath();
-      ctx.arc(c.x + vp.offsetX, c.y + vp.offsetY, size * 0.55, 0, Math.PI * 2);
-      ctx.lineWidth = Math.max(1.5, size * 0.08);
+      ctx.arc(c.x + vp.offsetX, c.y + vp.offsetY, size * 0.6, 0, Math.PI * 2);
+      ctx.lineWidth = Math.max(1, size * 0.05);
       ctx.strokeStyle = base.faction === null ? NEUTRAL_RING : FACTION_COLOR[base.faction];
       ctx.stroke();
     }
