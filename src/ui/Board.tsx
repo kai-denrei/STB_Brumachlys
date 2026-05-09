@@ -21,6 +21,14 @@ const FACTION_COLOR: Record<FactionId, string> = {
 };
 const NEUTRAL_RING = '#5A5A55';
 
+// Single-letter abbreviations for unit types — placeholder identity until
+// per-type sprites land. Falls back to the first letter of the type key for
+// any new unit type that isn't explicitly listed.
+const TYPE_LETTER: Record<string, string> = {
+  infantry: 'I',
+  tank: 'T',
+};
+
 // Texture variant keys → file paths under public/textures/. Base tiles pick a
 // variant by faction so the village art reflects ownership at a glance.
 const SQRT3 = Math.sqrt(3);
@@ -596,12 +604,17 @@ export function Board({
       ctx.strokeStyle = FACTION_COLOR[u.faction];
       ctx.stroke();
 
-      // Count number
-      ctx.font = `bold ${Math.max(9, size * 0.55)}px "JetBrains Mono", ui-monospace, monospace`;
+      // Type letter (placeholder until per-type sprites land) above the count.
       ctx.fillStyle = FACTION_COLOR[u.faction];
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(String(u.count), cx, cy + size * 0.04);
+      const letter = TYPE_LETTER[u.type] ?? u.type[0]?.toUpperCase() ?? '?';
+      ctx.font = `bold ${Math.max(9, size * 0.42)}px "JetBrains Mono", ui-monospace, monospace`;
+      ctx.fillText(letter, cx, cy - size * 0.14);
+
+      // Count number
+      ctx.font = `bold ${Math.max(7, size * 0.30)}px "JetBrains Mono", ui-monospace, monospace`;
+      ctx.fillText(String(u.count), cx, cy + size * 0.22);
 
       // Stance pip (small dot at top of unit)
       const pipColor =
