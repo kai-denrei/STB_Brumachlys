@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from 'react';
-import threeWaysXml from '../data/maps/three-ways.xml?raw';
+import { DEFAULT_MAP_ID } from './io/maps.ts';
 import { useStore } from './state/store.ts';
 import { Board } from './ui/Board.tsx';
 import { Hud } from './ui/Hud.tsx';
@@ -16,7 +16,7 @@ import type { Hex } from './core/types.ts';
 export function App() {
   const game = useStore((s) => s.game);
   const unitTypes = useStore((s) => s.unitTypes);
-  const initGame = useStore((s) => s.initGame);
+  const startGameByMapId = useStore((s) => s.startGameByMapId);
   const selectedUnitId = useStore((s) => s.selectedUnitId);
   const selectUnit = useStore((s) => s.selectUnit);
   const queueOrder = useStore((s) => s.queueOrder);
@@ -25,8 +25,8 @@ export function App() {
   const newGame = useStore((s) => s.newGame);
 
   useEffect(() => {
-    if (!game) initGame(threeWaysXml);
-  }, [game, initGame]);
+    if (!game) startGameByMapId(DEFAULT_MAP_ID);
+  }, [game, startGameByMapId]);
 
   // ── Derived state for highlights ─────────────────────────────────────────
   const planner = game?.activePlanner ?? null;
@@ -195,7 +195,7 @@ export function App() {
       )}
       {handoffStage !== 'none' && <Handoff />}
       {game.phase === 'over' && (
-        <WinBanner state={game} onNewGame={() => newGame()} />
+        <WinBanner state={game} onNewGame={(mapId) => newGame(mapId)} />
       )}
       <PwaToasts installEligible={game.round > 1} />
     </main>
