@@ -23,6 +23,7 @@ export function App() {
   const handoffStage = useStore((s) => s.handoffStage);
   const finishReplay = useStore((s) => s.finishReplay);
   const newGame = useStore((s) => s.newGame);
+  const discoveredByFaction = useStore((s) => s.discovered);
 
   useEffect(() => {
     if (!game) startGameByMapId(DEFAULT_MAP_ID);
@@ -42,19 +43,37 @@ export function App() {
   const queuedAttackForSelected = queuedOrders.find(
     (o) => o.kind === 'attack' && o.unitId === selectedUnitId,
   );
-  const plannedDest =
-    queuedMoveForSelected && queuedMoveForSelected.kind === 'move'
-      ? queuedMoveForSelected.path[queuedMoveForSelected.path.length - 1] ?? null
-      : null;
+  // Path arrow per queued move for the active planner. We derive from the
+  // pendingOrders list (not the selected unit) so the arrow stays on screen
+  // after queueing — selectUnit(null) fires after queueOrder, which used to
+  // wipe the visualisation until the user re-selected.
+  const plannedPaths: Hex[][] = useMemo(() => {
+    if (!game || planner === null) return [];
+    const out: Hex[][] = [];
+    for (const order of game.pendingOrders[planner]) {
+      if (order.kind !== 'move') continue;
+      const unit = game.units[order.unitId];
+      if (!unit) continue;
+      out.push([unit.hex, ...order.path]);
+    }
+    return out;
+  }, [game, planner]);
+
   const plannedAttack =
     queuedAttackForSelected && queuedAttackForSelected.kind === 'attack'
       ? queuedAttackForSelected.targetHex
       : null;
 
-  // Effective attacking position = planned move dest if any, else current hex
-  const effectiveAttackPos: Hex | null = selectedUnit
-    ? plannedDest ?? selectedUnit.hex
-    : null;
+  // Effective attacking position = the selected unit's queued move destination
+  // if any, else its current hex.
+  const effectiveAttackPos: Hex | null = (() => {
+    if (!selectedUnit) return null;
+    if (queuedMoveForSelected && queuedMoveForSelected.kind === 'move') {
+      const path = queuedMoveForSelected.path;
+      return path[path.length - 1] ?? selectedUnit.hex;
+    }
+    return selectedUnit.hex;
+  })();
 
   const reachable = useMemo(() => {
     if (!game || !selectedUnit || !selectedUnitType || planner === null) return new Set<string>();
@@ -63,15 +82,19 @@ export function App() {
     return new Set<string>(m.keys());
   }, [game, selectedUnit, selectedUnitType, planner, queuedMoveForSelected]);
 
+  const currentVisible = useMemo(() => {
+    if (!game || planner === null) return new Set<string>();
+    return visibleHexesFor(game, planner, unitTypes);
+  }, [game, planner, unitTypes]);
+
   const attackable = useMemo(() => {
     if (!game || !selectedUnit || !selectedUnitType || !effectiveAttackPos || planner === null)
       return new Set<string>();
-    const fog = visibleHexesFor(game, planner, unitTypes);
     const out = new Set<string>();
     for (const u of Object.values(game.units)) {
       if (u.faction === planner) continue;
       const k = hexKey(u.hex);
-      if (!fog.has(k)) continue;
+      if (!currentVisible.has(k)) continue;
       const d = distance(effectiveAttackPos, u.hex);
       if (d < selectedUnitType.minRange || d > selectedUnitType.maxRange) continue;
       // Verify attacker can engage this armor type
@@ -81,7 +104,7 @@ export function App() {
       out.add(k);
     }
     return out;
-  }, [game, selectedUnit, selectedUnitType, effectiveAttackPos, planner, unitTypes]);
+  }, [game, selectedUnit, selectedUnitType, effectiveAttackPos, planner, unitTypes, currentVisible]);
 
   // ── Tap handling ─────────────────────────────────────────────────────────
   function onTapHex(hex: Hex) {
@@ -176,11 +199,13 @@ export function App() {
         state={game}
         unitTypes={unitTypes}
         perspective={planner}
+        currentVisible={currentVisible}
+        discovered={planner !== null ? discoveredByFaction[planner] : undefined}
         highlights={{
           selectedHex: selectedUnit?.hex ?? null,
           reachableHexes: reachable,
           attackableHexes: attackable,
-          plannedDest,
+          plannedPaths,
           plannedAttack,
         }}
         onTapHex={onTapHex}
