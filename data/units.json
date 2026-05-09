@@ -1,0 +1,44 @@
+{
+  "infantry": {
+    "key": "infantry",
+    "description": "Trooper. Cheap personnel. High initiative, strong armor vs small arms.",
+    "cost": 75,
+    "movement": 9,
+    "initiative": 8,
+    "armor": 6,
+    "armorType": "personnel",
+    "minRange": 1,
+    "maxRange": 1,
+    "vision": 2,
+    "attackStrengths": { "personnel": 6, "armored": 3, "naval": 0, "air": 0 },
+    "terrainEffects": {
+      "plains":    { "movementCost": 3,  "attackBonus": 0, "armorBonus": 0 },
+      "woods":     { "movementCost": 4,  "attackBonus": 0, "armorBonus": 2 },
+      "mountains": { "movementCost": 6,  "attackBonus": 1, "armorBonus": 3 },
+      "swamp":     { "movementCost": 8,  "attackBonus": 0, "armorBonus": 0 },
+      "water":     { "movementCost": 99, "attackBonus": 0, "armorBonus": 0 },
+      "base":      { "movementCost": 3,  "attackBonus": 0, "armorBonus": 1 }
+    }
+  },
+  "tank": {
+    "key": "tank",
+    "description": "Light tank. Armored chassis, strong vs personnel, slowed by rough terrain.",
+    "cost": 300,
+    "movement": 12,
+    "initiative": 6,
+    "armor": 5,
+    "armorType": "armored",
+    "minRange": 1,
+    "maxRange": 1,
+    "vision": 2,
+    "attackStrengths": { "personnel": 5, "armored": 5, "naval": 0, "air": 0 },
+    "terrainEffects": {
+      "plains":    { "movementCost": 3,  "attackBonus": 0,  "armorBonus": 0 },
+      "woods":     { "movementCost": 6,  "attackBonus": 0,  "armorBonus": 0 },
+      "mountains": { "movementCost": 99, "attackBonus": 0,  "armorBonus": 0 },
+      "swamp":     { "movementCost": 12, "attackBonus": -1, "armorBonus": -1 },
+      "water":     { "movementCost": 99, "attackBonus": 0,  "armorBonus": 0 },
+      "base":      { "movementCost": 3,  "attackBonus": 0,  "armorBonus": 1 }
+    }
+  }
+}

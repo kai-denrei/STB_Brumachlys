@@ -1,0 +1,28 @@
+node_modules
+dist
+dev-dist
+.DS_Store
+*.local
+.vite
+coverage
+*.tsbuildinfo
+
+# Upstream Weewar map corpus — 12k+ XML files, ~30MB.
+# Only data/maps/three-ways.xml (a copy of weewar-maps/1.xml) is in tree.
+weewar-maps/
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*

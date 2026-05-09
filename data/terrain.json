@@ -1,0 +1,8 @@
+{
+  "plains":    { "key": "plains",    "description": "Open ground.",                 "passable": ["personnel", "armored", "naval", "air"] },
+  "woods":     { "key": "woods",     "description": "Forest. Cover for personnel.", "passable": ["personnel", "armored", "air"] },
+  "mountains": { "key": "mountains", "description": "Impassable for vehicles.",     "passable": ["personnel", "air"] },
+  "swamp":     { "key": "swamp",     "description": "Slow going for everyone.",     "passable": ["personnel", "armored", "air"] },
+  "water":     { "key": "water",     "description": "Naval and air only.",          "passable": ["naval", "air"] },
+  "base":      { "key": "base",      "description": "Captureable structure.",       "passable": ["personnel", "armored", "naval", "air"] }
+}

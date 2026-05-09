@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180" width="180" height="180">
+  <rect width="180" height="180" fill="#0E0F10"/>
+  <polygon points="90,26 144,58 144,122 90,154 36,122 36,58" fill="none" stroke="#E89A3C" stroke-width="6" stroke-linejoin="miter"/>
+  <text x="90" y="111" text-anchor="middle" font-family="ui-monospace, 'JetBrains Mono', 'IBM Plex Mono', monospace" font-size="74" font-weight="700" fill="#E89A3C">B</text>
+</svg>

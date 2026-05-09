@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
+  <rect width="192" height="192" fill="#0E0F10"/>
+  <!-- Hexagon: amber stroke, transparent fill -->
+  <polygon points="96,28 154,62 154,130 96,164 38,130 38,62" fill="none" stroke="#E89A3C" stroke-width="6" stroke-linejoin="miter"/>
+  <!-- Letter B in JetBrains-Mono-style amber -->
+  <text x="96" y="118" text-anchor="middle" font-family="ui-monospace, 'JetBrains Mono', 'IBM Plex Mono', monospace" font-size="78" font-weight="700" fill="#E89A3C">B</text>
+</svg>

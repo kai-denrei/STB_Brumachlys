@@ -1,0 +1,678 @@
+/* Brumachlys palette and base typography. See DECISIONS.md §C.8. */
+
+:root {
+  --bg-base: #0E0F10;
+  --bg-elev: #1A1B1E;
+  --hairline: #2A2B2E;
+  --fg-text: #E8E4D8;
+  --fg-muted: #8A8B85;
+  --accent-faction-0: #E89A3C; /* Ember Amber  — Faction 0 */
+  --accent-faction-1: #3FB7B0; /* Iron Teal    — Faction 1 */
+  --fog-overlay: rgba(14, 15, 16, 0.78);
+
+  --font-mono: 'JetBrains Mono', 'IBM Plex Mono', ui-monospace, SFMono-Regular,
+    Menlo, monospace;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--bg-base);
+  color: var(--fg-text);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none;
+}
+
+body {
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+a {
+  color: var(--accent-faction-1);
+}
+
+code {
+  font-family: var(--font-mono);
+  background: var(--bg-elev);
+  padding: 0.05em 0.35em;
+  border: 1px solid var(--hairline);
+  border-radius: 2px;
+}
+
+em {
+  color: var(--accent-faction-0);
+  font-style: italic;
+}
+
+/* ── Game shell ─────────────────────────────────────────────────────────── */
+
+.boot-shell,
+.game-shell {
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+.boot-shell {
+  align-items: center;
+  justify-content: center;
+}
+
+.boot-tagline {
+  color: var(--fg-muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 0.85rem;
+}
+
+.hud {
+  flex: 0 0 auto;
+  padding: 0.5rem 0.75rem 0.55rem;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--bg-elev);
+}
+
+.hud-line {
+  display: flex;
+  align-items: baseline;
+  gap: 0.65rem;
+  font-size: 0.85rem;
+}
+
+.hud-round {
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.hud-phase {
+  color: var(--fg-muted);
+  font-size: 0.7rem;
+  letter-spacing: 0.18em;
+}
+
+.hud-player {
+  margin-left: auto;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.hud-player.fac-0 {
+  color: var(--accent-faction-0);
+}
+.hud-player.fac-1 {
+  color: var(--accent-faction-1);
+}
+
+.hud-sub {
+  font-size: 0.7rem;
+  color: var(--fg-muted);
+  margin-top: 0.15rem;
+  letter-spacing: 0.1em;
+}
+
+.board-container {
+  flex: 1 1 auto;
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+  touch-action: none;
+}
+
+.board-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: crosshair;
+}
+
+/* ── Order panel ────────────────────────────────────────────────────────── */
+
+.order-panel {
+  /* Fixed height so selecting a unit never re-flows the board canvas. */
+  flex: 0 0 220px;
+  height: 220px;
+  background: var(--bg-elev);
+  border-top: 1px solid var(--hairline);
+  padding: 0.5rem 0.75rem 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  overflow: hidden;
+}
+
+/* Inner scroll lives on the variable-height middle region only,
+   so the footer (Commit button) is always visible. */
+.op-selected,
+.op-empty {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.op-empty {
+  align-items: center;
+  justify-content: center;
+}
+
+.op-footer {
+  flex: 0 0 auto;
+}
+
+.op-empty-text {
+  color: var(--fg-muted);
+  font-size: 0.85rem;
+  text-align: center;
+  padding: 0.4rem 0;
+}
+
+.op-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.op-header {
+  border-bottom: 1px dashed var(--hairline);
+  padding-bottom: 0.4rem;
+}
+
+.op-id {
+  font-weight: 700;
+  color: var(--accent-faction-0);
+  letter-spacing: 0.05em;
+}
+
+.op-type {
+  color: var(--fg-muted);
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+}
+
+.op-count {
+  margin-left: auto;
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.op-stance {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.35rem;
+}
+
+.op-stance-btn {
+  background: transparent;
+  border: 1px solid var(--hairline);
+  color: var(--fg-muted);
+  padding: 0.5rem 0.3rem;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.op-stance-btn.active {
+  border-color: var(--accent-faction-0);
+  color: var(--accent-faction-0);
+  background: rgba(232, 154, 60, 0.08);
+}
+
+.op-orders {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.op-orders li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0.5rem;
+  background: rgba(232, 228, 216, 0.04);
+  border: 1px solid var(--hairline);
+  border-radius: 2px;
+  font-size: 0.8rem;
+}
+
+.op-order-kind {
+  color: var(--accent-faction-0);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 0.7rem;
+}
+
+.op-order-detail {
+  color: var(--fg-muted);
+}
+
+.op-order-x {
+  margin-left: auto;
+  background: transparent;
+  border: none;
+  color: var(--fg-muted);
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.op-footer {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.2rem;
+  padding-top: 0.45rem;
+  border-top: 1px dashed var(--hairline);
+}
+
+.op-pending {
+  color: var(--fg-muted);
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+}
+
+.op-commit {
+  margin-left: auto;
+  background: var(--accent-faction-0);
+  color: #0E0F10;
+  border: none;
+  padding: 0.55rem 0.9rem;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.op-commit:disabled {
+  background: var(--hairline);
+  color: var(--fg-muted);
+  cursor: not-allowed;
+}
+
+/* ── Handoff overlay ────────────────────────────────────────────────────── */
+
+.handoff-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: var(--bg-base);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+.handoff-inner {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.handoff-mark {
+  font-size: 2rem;
+  color: var(--accent-faction-0);
+}
+
+.handoff-overlay h2 {
+  margin: 0;
+  font-size: 1.25rem;
+  letter-spacing: 0.06em;
+}
+
+.handoff-cue {
+  margin: 0;
+  color: var(--fg-muted);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+}
+
+.handoff-prompt {
+  margin: 0;
+  color: var(--fg-muted);
+  letter-spacing: 0.18em;
+  font-size: 0.7rem;
+}
+
+.handoff-reveal {
+  background: var(--accent-faction-0);
+  color: #0E0F10;
+  border: none;
+  padding: 0.85rem 1.6rem;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  border-radius: 2px;
+  cursor: pointer;
+  margin-top: 0.4rem;
+}
+
+/* ── Replay controls ────────────────────────────────────────────────────── */
+
+.replay-stage {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.replay-controls {
+  flex: 0 0 auto;
+  background: var(--bg-elev);
+  border-top: 1px solid var(--hairline);
+  padding: 0.55rem 0.75rem;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: auto auto;
+  gap: 0.4rem 0.6rem;
+  align-items: center;
+}
+
+.replay-counter {
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: var(--accent-faction-0);
+}
+
+.replay-text {
+  color: var(--fg-text);
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.replay-speed {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+}
+
+.replay-speed-btn,
+.replay-skip {
+  background: transparent;
+  border: 1px solid var(--hairline);
+  color: var(--fg-muted);
+  padding: 0.35rem 0.6rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.replay-speed-btn.active {
+  border-color: var(--accent-faction-1);
+  color: var(--accent-faction-1);
+  background: rgba(63, 183, 176, 0.08);
+}
+
+.replay-skip {
+  margin-left: auto;
+  border-color: var(--accent-faction-0);
+  color: var(--accent-faction-0);
+}
+
+/* ── Win banner ─────────────────────────────────────────────────────────── */
+
+.win-banner {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: rgba(14, 15, 16, 0.92);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: env(safe-area-inset-top) 1rem env(safe-area-inset-bottom);
+}
+
+.win-inner {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.win-mark {
+  font-size: 2rem;
+  color: var(--accent-faction-0);
+}
+
+.win-title {
+  margin: 0;
+  font-size: 1.6rem;
+  letter-spacing: 0.08em;
+}
+
+.win-title.fac-0 { color: var(--accent-faction-0); }
+.win-title.fac-1 { color: var(--accent-faction-1); }
+
+.win-sub {
+  margin: 0;
+  color: var(--fg-muted);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+}
+
+.win-newgame {
+  margin-top: 0.6rem;
+  background: var(--accent-faction-0);
+  color: #0E0F10;
+  border: none;
+  padding: 0.7rem 1.4rem;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+/* ── PWA toasts ─────────────────────────────────────────────────────────── */
+
+.pwa-toast-stack {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.5rem 0.75rem calc(0.5rem + env(safe-area-inset-bottom));
+  pointer-events: none;
+}
+
+.pwa-toast {
+  pointer-events: auto;
+  background: var(--bg-elev);
+  border: 1px solid var(--hairline);
+  border-radius: 3px;
+  padding: 0.5rem 0.7rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.78rem;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+.pwa-toast-text {
+  color: var(--fg-text);
+  flex: 1 1 auto;
+}
+
+.pwa-share-glyph {
+  color: var(--accent-faction-1);
+  font-weight: 700;
+}
+
+.pwa-toast-action {
+  background: var(--accent-faction-0);
+  color: #0E0F10;
+  border: none;
+  padding: 0.35rem 0.7rem;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.pwa-toast-dismiss {
+  background: transparent;
+  border: none;
+  color: var(--fg-muted);
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+/* ── Scaffold placeholder layout ────────────────────────────────────────── */
+
+.scaffold-shell {
+  min-height: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 2rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.scaffold-header {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+  padding-bottom: 1.25rem;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.scaffold-mark {
+  color: var(--accent-faction-0);
+  font-size: 1.75rem;
+  line-height: 1;
+}
+
+.scaffold-shell h1 {
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.scaffold-tagline {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 0.9rem;
+}
+
+.scaffold-status h2 {
+  margin: 0 0 0.75rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--fg-muted);
+}
+
+.scaffold-status ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.scaffold-status li {
+  display: grid;
+  grid-template-columns: 0.7rem 1fr auto;
+  align-items: baseline;
+  column-gap: 0.65rem;
+  row-gap: 0.15rem;
+  padding: 0.55rem 0.75rem;
+  background: var(--bg-elev);
+  border: 1px solid var(--hairline);
+  border-radius: 3px;
+}
+
+.scaffold-status .dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  align-self: center;
+}
+
+.scaffold-status .phase-name {
+  font-weight: 700;
+}
+
+.scaffold-status .phase-status {
+  color: var(--fg-muted);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.scaffold-status .phase-note {
+  grid-column: 2 / -1;
+  color: var(--fg-muted);
+  font-size: 0.8rem;
+}
+
+.scaffold-footer {
+  margin-top: auto;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--hairline);
+  color: var(--fg-muted);
+  font-size: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.scaffold-footer p {
+  margin: 0;
+}
+
+.scaffold-tiny {
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
