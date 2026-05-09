@@ -106,16 +106,23 @@ export function Replay({ oldState, log, unitTypes, onDone }: Props) {
     } else if (e.type === 'kill') {
       delete next.units[e.unitId];
     } else if (e.type === 'unit-spawned') {
-      next.units[e.unitId] = {
-        id: e.unitId,
-        type: e.unitTypeKey,
-        faction: e.faction,
-        hex: { q: e.hex.q, r: e.hex.r },
-        count: 10,
-        stance: 'aggressive',
-        attackedFromHexes: [],
-      };
-      next.credits = { ...next.credits, [e.faction]: next.credits[e.faction] - e.cost };
+      // Idempotent: when the buy was pre-spawned at queue time the unit is
+      // already in `oldState` (and thus in `next`), and credits were already
+      // deducted. In that case do nothing visible here — the player saw it
+      // when they queued. The fresh-spawn path (no pre-spawn, e.g. tests or
+      // a future flow without optimistic UI) lands the unit and deducts.
+      if (!next.units[e.unitId]) {
+        next.units[e.unitId] = {
+          id: e.unitId,
+          type: e.unitTypeKey,
+          faction: e.faction,
+          hex: { q: e.hex.q, r: e.hex.r },
+          count: 10,
+          stance: 'aggressive',
+          attackedFromHexes: [],
+        };
+        next.credits = { ...next.credits, [e.faction]: next.credits[e.faction] - e.cost };
+      }
     } else if (e.type === 'income') {
       next.credits = {
         ...next.credits,

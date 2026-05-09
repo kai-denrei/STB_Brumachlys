@@ -7,10 +7,15 @@ export type Order =
   | { kind: 'move'; unitId: string; path: Hex[] } // destination hexes only, not start
   | { kind: 'attack'; unitId: string; targetHex: Hex }
   | { kind: 'stance'; unitId: string; stance: Stance }
-  // 'buy' is faction-implicit (lives in pendingOrders[faction]); spawns at
-  // baseHex at end of round. No unitId because the unit doesn't exist yet —
-  // baseHex is the dedup key (one buy per base per round).
-  | { kind: 'buy'; baseHex: Hex; unitTypeKey: string };
+  // 'buy' is faction-implicit (lives in pendingOrders[faction]). baseHex is
+  // the dedup key (one buy per base per round). `unitId` is optional: when
+  // present (production flow), the store has already pre-spawned the unit at
+  // queue time and deducted credits, so the resolver detects an existing
+  // unit at that ID and skips the spawn but still emits a `unit-spawned`
+  // event for replay-log consistency. When omitted (test fixtures and any
+  // legacy/synthetic paths), the resolver generates the ID and applies the
+  // full spawn at end-of-round.
+  | { kind: 'buy'; baseHex: Hex; unitTypeKey: string; unitId?: string };
 
 export type ValidationResult =
   | { ok: true }
