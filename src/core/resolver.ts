@@ -1,10 +1,17 @@
 // The deterministic resolver. Pure function.
 //
 // Phase A — Movement: every queued `move` order processed in init order.
-//   Conflict rules per §2.4:
-//     • two units want the same hex → higher init claims it; loser stops one back
-//     • move into enemy hex → stop one back
+//   Conflict rules:
 //     • pass-through friendly hex allowed mid-path; cannot land on a friendly
+//     • enemy hexes are valid destinations — entering one terminates the
+//       path there, and the resulting stack is resolved in Phase A.5
+//
+// Phase A.5 — Mêlée: any hex with units of more than one faction triggers
+//   a brawl. Units take alternating strikes (attacker = highest-init, target
+//   = highest-init enemy on that hex) using the standard combat math without
+//   a range gate. Loops until only one faction remains, or until both sides
+//   deal zero damage on a strike (mutual-immunity stalemate, e.g. a ground
+//   unit stacked with a unit it can't damage and vice versa).
 //
 // Phase B — Combat: queued attacks + aggressive auto-attacks, in init order.
 //   Counter-attack happens within attacker's slot (§3.3).
@@ -101,10 +108,11 @@ export function resolveRound(
       if (stepCost >= 99) break;
       if (budget < stepCost) break;
       const blocker = blockerAt(step, u.id);
-      if (blocker && blocker.faction !== u.faction) break; // enemy stops us
-      // friendly: pass through allowed; we still pay the cost and record the step
+      // Enemy hex: enter it and stop (mêlée resolves in Phase A.5).
+      // Friendly hex: pass through allowed; we still pay the cost and record the step.
       pathTaken.push(step);
       budget -= stepCost;
+      if (blocker && blocker.faction !== u.faction) break;
     }
 
     // If we ended on a friendly hex (passed through and ran out / final), back up.
@@ -133,6 +141,84 @@ export function resolveRound(
     }
     if (planned && (finalPos.q !== planned.q || finalPos.r !== planned.r)) {
       log.push({ type: 'path-truncated', unitId: u.id, planned, actual: finalPos });
+    }
+  }
+
+  // ── 2.5. Phase A.5 — Mêlée (stacked enemies brawl to last survivor) ──────
+  // For each hex that contains units of more than one faction after movement,
+  // run a brawl loop until only one faction remains or until both sides deal
+  // zero damage on a strike (mutual-immunity stalemate). Strikes use the
+  // standard combat math (no range gate, no gang-up) on the shared hex's
+  // terrain. Counter fires from the same hex with the same terrain bonuses.
+  const MELEE_MAX_STRIKES = 50; // hard safety cap; well above any realistic count
+  const stackedHexKeys = new Set<string>();
+  for (const u of Object.values(next.units)) {
+    stackedHexKeys.add(hexKey(u.hex));
+  }
+  for (const hk of stackedHexKeys) {
+    const here = (): UnitInstance[] =>
+      Object.values(next.units).filter((u) => u.count > 0 && hexKey(u.hex) === hk);
+    let units = here();
+    if (units.length < 2) continue;
+    const factions = new Set(units.map((u) => u.faction));
+    if (factions.size < 2) continue;
+
+    const tile = next.map.tiles.get(hk);
+    if (!tile) continue;
+
+    for (let strikes = 0; strikes < MELEE_MAX_STRIKES; strikes++) {
+      units = here();
+      if (units.length < 2) break;
+      const facs = new Set(units.map((u) => u.faction));
+      if (facs.size < 2) break;
+
+      units.sort(cmpUnits);
+      const att = units[0]!;
+      const def = units.find((u) => u.faction !== att.faction);
+      if (!def) break;
+
+      const attType = unitTypes[att.type];
+      const defType = unitTypes[def.type];
+      if (!attType || !defType) break;
+
+      const attDmg = attackDamage(att, def, attType, defType, tile, tile, 0);
+      def.count = Math.max(0, def.count - attDmg);
+      log.push({
+        type: 'attack',
+        attackerId: att.id,
+        defenderId: def.id,
+        damage: attDmg,
+        bonusB: 0,
+      });
+      if (def.count <= 0) {
+        log.push({ type: 'kill', unitId: def.id });
+        delete next.units[def.id];
+        continue; // re-evaluate stack
+      }
+
+      // Counter fires from the same hex; no range gate (we're stacked).
+      const canCounter = defType.attackStrengths[attType.armorType] > 0;
+      const counterDmg = canCounter
+        ? attackDamage(def, att, defType, attType, tile, tile, 0)
+        : 0;
+      if (counterDmg > 0 || canCounter) {
+        att.count = Math.max(0, att.count - counterDmg);
+        log.push({
+          type: 'counter',
+          attackerId: def.id,
+          defenderId: att.id,
+          damage: counterDmg,
+        });
+        if (att.count <= 0) {
+          log.push({ type: 'kill', unitId: att.id });
+          delete next.units[att.id];
+          continue;
+        }
+      }
+
+      // Mutual-immunity stalemate: neither side dealt damage this strike.
+      // Leave both alive, exit the brawl on this hex.
+      if (attDmg === 0 && counterDmg === 0) break;
     }
   }
 
