@@ -6,12 +6,22 @@ type Props = {
   player: FactionId | null;
   pendingCount: number;
   credits?: number; // current player's economy balance
+  hoverInfoMode?: boolean;
+  onToggleHoverInfo?: () => void;
 };
 
 const FACTION_LABEL: Record<FactionId, string> = { 0: 'Ember', 1: 'Iron' };
 const FACTION_CLASS: Record<FactionId, string> = { 0: 'fac-0', 1: 'fac-1' };
 
-export function Hud({ round, phase, player, pendingCount, credits }: Props) {
+export function Hud({
+  round,
+  phase,
+  player,
+  pendingCount,
+  credits,
+  hoverInfoMode,
+  onToggleHoverInfo,
+}: Props) {
   const phaseLabel = phase.replace('-', ' ').toUpperCase();
   return (
     <header className="hud">
@@ -23,6 +33,18 @@ export function Hud({ round, phase, player, pendingCount, credits }: Props) {
             {FACTION_LABEL[player]} (P{player + 1})
           </span>
         )}
+        {onToggleHoverInfo && phase === 'planning' && (
+          <button
+            type="button"
+            className={`hud-info-toggle${hoverInfoMode ? ' on' : ''}`}
+            onClick={onToggleHoverInfo}
+            aria-pressed={hoverInfoMode ? 'true' : 'false'}
+            aria-label={hoverInfoMode ? 'Exit info mode' : 'Enter info mode'}
+            title="Tap a hex for stats while this is on"
+          >
+            ⓘ
+          </button>
+        )}
       </div>
       {phase === 'planning' && (
         <div className="hud-sub">
@@ -30,6 +52,7 @@ export function Hud({ round, phase, player, pendingCount, credits }: Props) {
           {credits !== undefined && (
             <span className="hud-credits"> · ¢{credits}</span>
           )}
+          {hoverInfoMode && <span className="hud-info-flag"> · INFO MODE</span>}
         </div>
       )}
     </header>

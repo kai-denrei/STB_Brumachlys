@@ -7,6 +7,7 @@ import { OrderPanel } from './ui/OrderPanel.tsx';
 import { Handoff } from './ui/Handoff.tsx';
 import { Replay } from './ui/Replay.tsx';
 import { WinBanner } from './ui/WinBanner.tsx';
+import { InfoPanel } from './ui/InfoPanel.tsx';
 import { PwaToasts } from './ui/PwaToasts.tsx';
 import { findPath, reachableHexes } from './core/pathing.ts';
 import { distance, key as hexKey } from './core/hex.ts';
@@ -26,6 +27,10 @@ export function App() {
   const finishReplay = useStore((s) => s.finishReplay);
   const newGame = useStore((s) => s.newGame);
   const discoveredByFaction = useStore((s) => s.discovered);
+  const hoverInfoMode = useStore((s) => s.hoverInfoMode);
+  const toggleHoverInfo = useStore((s) => s.toggleHoverInfo);
+  const hoveredHex = useStore((s) => s.hoveredHex);
+  const setHover = useStore((s) => s.setHover);
 
   useEffect(() => {
     if (!game) startGameByMapId(DEFAULT_MAP_ID);
@@ -111,6 +116,18 @@ export function App() {
   // ── Tap handling ─────────────────────────────────────────────────────────
   function onTapHex(hex: Hex) {
     if (!game || planner === null || game.phase !== 'planning') return;
+
+    // Hover-info mode: taps inspect rather than queue actions. Tapping the
+    // already-inspected hex closes the panel.
+    if (hoverInfoMode) {
+      if (hoveredHex && hoveredHex.q === hex.q && hoveredHex.r === hex.r) {
+        setHover(null);
+      } else {
+        setHover(hex);
+      }
+      return;
+    }
+
     const k = hexKey(hex);
 
     const unitHere = Object.values(game.units).find(
@@ -236,7 +253,20 @@ export function App() {
         player={planner}
         pendingCount={pendingCount}
         credits={plannerCredits}
+        hoverInfoMode={hoverInfoMode}
+        onToggleHoverInfo={toggleHoverInfo}
       />
+      {hoverInfoMode && hoveredHex && planner !== null && (
+        <InfoPanel
+          hex={hoveredHex}
+          state={game}
+          unitTypes={unitTypes}
+          perspective={planner}
+          currentVisible={currentVisible}
+          discovered={discoveredByFaction[planner]}
+          onClose={() => setHover(null)}
+        />
+      )}
       <Board
         state={game}
         unitTypes={unitTypes}
