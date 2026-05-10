@@ -343,6 +343,50 @@ describe('resolveRound — Phase B combat', () => {
   });
 });
 
+describe('resolveRound — Phase B.5 infantry capture', () => {
+  function stateWithBase(units: UnitInstance[], baseHex: Hex, baseFaction: 0 | 1 | null): GameState {
+    const map = makeMap({ ...plainsField(20, 5), [`${baseHex.q},${baseHex.r}`]: 'base' });
+    map.startingBases = [{ hex: baseHex, faction: baseFaction }];
+    const s = state(units, map);
+    return s;
+  }
+
+  test('infantry ending on a neutral base captures it', () => {
+    const inf = unit('inf', 'infantry', 0, { q: 0, r: 0 });
+    const s = stateWithBase([inf], { q: 1, r: 0 }, null);
+    const orders: Order[] = [{ kind: 'move', unitId: 'inf', path: [{ q: 1, r: 0 }] }];
+    const { newState, log } = resolveRound(s, orders, [], unitTypes);
+    expect(log.some((e) => e.type === 'base-captured' && e.toFaction === 0)).toBe(true);
+    expect(newState.map.startingBases[0]!.faction).toBe(0);
+  });
+
+  test('infantry capturing an enemy base flips ownership', () => {
+    const inf = unit('inf', 'infantry', 0, { q: 0, r: 0 });
+    const s = stateWithBase([inf], { q: 1, r: 0 }, 1);
+    const orders: Order[] = [{ kind: 'move', unitId: 'inf', path: [{ q: 1, r: 0 }] }];
+    const { newState, log } = resolveRound(s, orders, [], unitTypes);
+    const captureEv = log.find((e) => e.type === 'base-captured');
+    expect(captureEv && captureEv.type === 'base-captured' && captureEv.fromFaction).toBe(1);
+    expect(newState.map.startingBases[0]!.faction).toBe(0);
+  });
+
+  test('tank ending on a neutral base does NOT capture (infantry-only rule)', () => {
+    const tnk = unit('tnk', 'tank', 0, { q: 0, r: 0 });
+    const s = stateWithBase([tnk], { q: 1, r: 0 }, null);
+    const orders: Order[] = [{ kind: 'move', unitId: 'tnk', path: [{ q: 1, r: 0 }] }];
+    const { newState, log } = resolveRound(s, orders, [], unitTypes);
+    expect(log.some((e) => e.type === 'base-captured')).toBe(false);
+    expect(newState.map.startingBases[0]!.faction).toBe(null);
+  });
+
+  test('infantry already on its own base does not emit a redundant capture', () => {
+    const inf = unit('inf', 'infantry', 0, { q: 1, r: 0 });
+    const s = stateWithBase([inf], { q: 1, r: 0 }, 0);
+    const { log } = resolveRound(s, [], [], unitTypes);
+    expect(log.some((e) => e.type === 'base-captured')).toBe(false);
+  });
+});
+
 describe('resolveRound — determinism (§11.3)', () => {
   test('same input → byte-identical event log', () => {
     const a = unit('a', 'infantry', 0, { q: 0, r: 0 });

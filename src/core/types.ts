@@ -75,6 +75,8 @@ export type ResolutionEvent =
   | { type: 'counter'; attackerId: string; defenderId: string; damage: number }
   | { type: 'kill'; unitId: string }
   | { type: 'lost-target'; attackerId: string; targetHex: Hex }
+  // ── Capture event (Phase B.5) ─────────────────────────────────────────
+  | { type: 'base-captured'; unitId: string; baseHex: Hex; fromFaction: FactionId | null; toFaction: FactionId }
   // ── Economy events (Phase E) ──────────────────────────────────────────
   | { type: 'unit-spawned'; unitId: string; faction: FactionId; unitTypeKey: string; hex: Hex; cost: number }
   | { type: 'buy-fizzled'; faction: FactionId; baseHex: Hex; unitTypeKey: string; reason: string }

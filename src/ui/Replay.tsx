@@ -123,6 +123,18 @@ export function Replay({ oldState, log, unitTypes, onDone }: Props) {
         };
         next.credits = { ...next.credits, [e.faction]: next.credits[e.faction] - e.cost };
       }
+    } else if (e.type === 'base-captured') {
+      const idx = next.map.startingBases.findIndex(
+        (b) => b.hex.q === e.baseHex.q && b.hex.r === e.baseHex.r,
+      );
+      if (idx >= 0) {
+        next.map = {
+          ...next.map,
+          startingBases: next.map.startingBases.map((b, i) =>
+            i === idx ? { ...b, faction: e.toFaction } : b,
+          ),
+        };
+      }
     } else if (e.type === 'income') {
       next.credits = {
         ...next.credits,
@@ -298,6 +310,8 @@ function describe(e: ResolutionEvent | null, units: Record<string, UnitInstance>
       return `Buy ${e.unitTypeKey.toUpperCase()} fizzled — ${e.reason}`;
     case 'income':
       return `Income +¢${e.amount} (${e.bases} base${e.bases === 1 ? '' : 's'})`;
+    case 'base-captured':
+      return `${e.unitId.toUpperCase()} captured base (${e.baseHex.q},${e.baseHex.r})`;
   }
   void units;
   return '';

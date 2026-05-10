@@ -19,6 +19,10 @@
 //     • aggressive   → fires queued attack, else auto-attacks closest enemy in range; counters
 //     • defensive    → fires queued attack only (no auto); counters
 //     • hold-fire    → no offensive fire; no counter (silent)
+//
+// Phase B.5 — Capture: any surviving infantry on a base hex they don't
+//   already own flips that base's faction. Restricted to infantry; emits a
+//   `base-captured` event for the replay log.
 
 import { distance, key as hexKey } from './hex.ts';
 import { initTieKey } from './rng.ts';
@@ -335,6 +339,31 @@ export function resolveRound(
       log.push({ type: 'kill', unitId: att.id });
       delete next.units[att.id];
     }
+  }
+
+  // ── 3.5. Phase B.5 — Infantry capture ────────────────────────────────────
+  // Any surviving infantry standing on a base hex they don't already own
+  // claims that base. Restricted to infantry per design — tanks and future
+  // armoured units don't capture. Order doesn't matter: at most one unit can
+  // be on a base hex (mêlée resolved that already), so each capture is
+  // independent.
+  for (const u of Object.values(next.units)) {
+    if (u.count <= 0) continue;
+    if (u.type !== 'infantry') continue;
+    const baseIdx = next.map.startingBases.findIndex(
+      (b) => b.hex.q === u.hex.q && b.hex.r === u.hex.r,
+    );
+    if (baseIdx < 0) continue;
+    const base = next.map.startingBases[baseIdx]!;
+    if (base.faction === u.faction) continue; // already owned
+    log.push({
+      type: 'base-captured',
+      unitId: u.id,
+      baseHex: { q: u.hex.q, r: u.hex.r },
+      fromFaction: base.faction,
+      toFaction: u.faction,
+    });
+    next.map.startingBases[baseIdx] = { ...base, faction: u.faction };
   }
 
   // ── 4. Phase E — Economy ─────────────────────────────────────────────────

@@ -108,6 +108,21 @@ Fix: when the attacker CAN damage the defender's armor type (`A > 0`) AND the fo
 
 This also unblocks Phase A.5 mêlée stalemates that otherwise persisted indefinitely between equally-matched but low-count stacks.
 
+### B.20 Editable moves before commit
+Selecting a unit with a queued move re-opens the reachable overlay so the player can tap a new destination. The new tap replaces the previous queued move (queueOrder dedups by `(unitId, kind)`). Removes the prior "queue once, then `×` in OrderPanel to change" friction. The queued path arrow updates live.
+
+### B.21 Infantry capture — empty bases flip ownership
+Originally bases were inert (DECISIONS §C.3 — explicit v0.2 deferral). Now any **infantry** ending its move on a base hex it doesn't already own flips that base's faction. Tanks (and any future armoured types) do NOT capture. Implemented as a new resolver phase **B.5** that runs after movement + mêlée + combat:
+
+  • iterate surviving units; if `u.type === 'infantry'` AND on a base whose faction !== `u.faction` → flip + emit `base-captured` event.
+  • Emitted event drives the texture swap (`base-f0/f1/neutral`) in the replay and onward.
+  • Income (`Phase E`) immediately picks up the new ownership at end-of-round.
+
+Capture happens AFTER Phase B (combat) so infantry must survive ranged attacks to claim. Pass-through of a base mid-move does NOT capture — only end-of-move position counts.
+
+### B.22 AI builds units (solo mode only)
+The stub solo AI (DECISIONS §C.10 if we add one — currently in `core/ai.ts`) extends to queue infantry buys at empty owned bases while affordable. Predicts post-move occupancy (a unit leaving the base this round vacates it; the buy phase runs after movement). Always picks the cheapest unit type. Sub-optimal but keeps the production stream going for troubleshoot play.
+
 ### B.19 Mêlée stacking — enemy hexes are valid move destinations
 Originally enemy units blocked movement entirely (path stops one short), and engaging required a separate ranged `attack` order. To collapse the move + attack two-step into a single action and speed games up, enemy hexes were promoted to valid `findPath` / `reachableHexes` destinations. Entering one terminates the path there (you cannot path past); the resolver then runs a **Phase A.5 mêlée loop** for every hex containing more than one faction.
 

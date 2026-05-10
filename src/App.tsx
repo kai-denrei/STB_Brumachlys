@@ -86,10 +86,12 @@ export function App() {
 
   const reachable = useMemo(() => {
     if (!game || !selectedUnit || !selectedUnitType || planner === null) return new Set<string>();
-    if (queuedMoveForSelected) return new Set<string>(); // hide range once a move is queued
+    // Re-selecting a unit with a queued move keeps showing reachable so the
+    // player can tap a new destination — queueOrder dedups by (unitId, kind),
+    // so the new tap replaces the previous move. Editable moves before commit.
     const m = reachableHexes(game.map, game.units, selectedUnit.hex, selectedUnitType, planner);
     return new Set<string>(m.keys());
-  }, [game, selectedUnit, selectedUnitType, planner, queuedMoveForSelected]);
+  }, [game, selectedUnit, selectedUnitType, planner]);
 
   const currentVisible = useMemo(() => {
     if (!game || planner === null) return new Set<string>();
