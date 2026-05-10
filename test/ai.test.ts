@@ -96,3 +96,88 @@ describe('generateAIOrders — basic behaviour for solo / troubleshoot AI', () =
     expect(orders.some((o) => o.kind === 'move' && o.unitId === 'a2')).toBe(true);
   });
 });
+
+describe('generateAIOrders — buy orders', () => {
+  function stateWithBaseAndCredits(
+    units: UnitInstance[],
+    base: { hex: Hex; faction: 0 | 1 | null },
+    credits: { 0: number; 1: number },
+  ): GameState {
+    const map = makeMap();
+    map.startingBases = [base];
+    return {
+      ...state(units),
+      map,
+      credits,
+    };
+  }
+
+  test('AI with empty owned base + sufficient credits queues an infantry buy', () => {
+    const enemy = unit('e', 'infantry', 0, { q: 0, r: 0 });
+    const s = stateWithBaseAndCredits(
+      [enemy],
+      { hex: { q: 10, r: 2 }, faction: 1 },
+      { 0: 0, 1: 100 },
+    );
+    const orders = generateAIOrders(s, 1, unitTypes);
+    const buy = orders.find((o) => o.kind === 'buy');
+    expect(buy).toBeDefined();
+    if (buy && buy.kind === 'buy') {
+      expect(buy.unitTypeKey).toBe('infantry');
+      expect(buy.baseHex).toEqual({ q: 10, r: 2 });
+    }
+  });
+
+  test('AI with insufficient credits does NOT queue a buy', () => {
+    const enemy = unit('e', 'infantry', 0, { q: 0, r: 0 });
+    const s = stateWithBaseAndCredits(
+      [enemy],
+      { hex: { q: 10, r: 2 }, faction: 1 },
+      { 0: 0, 1: 10 }, // less than infantry cost
+    );
+    const orders = generateAIOrders(s, 1, unitTypes);
+    expect(orders.some((o) => o.kind === 'buy')).toBe(false);
+  });
+
+  test('AI does NOT buy at a base owned by the enemy', () => {
+    const enemy = unit('e', 'infantry', 0, { q: 0, r: 0 });
+    const s = stateWithBaseAndCredits(
+      [enemy],
+      { hex: { q: 10, r: 2 }, faction: 0 }, // enemy owned
+      { 0: 0, 1: 1000 },
+    );
+    const orders = generateAIOrders(s, 1, unitTypes);
+    expect(orders.some((o) => o.kind === 'buy')).toBe(false);
+  });
+
+  test('AI does NOT buy when its unit stays on the base (no move queued)', () => {
+    // Enemy adjacent to the AI unit's current hex → AI queues an attack with
+    // no move, so the unit doesn't vacate the base. Buy must be skipped.
+    const enemy = unit('e', 'infantry', 0, { q: 11, r: 2 });
+    const ai = unit('a', 'infantry', 1, { q: 10, r: 2 });
+    const s = stateWithBaseAndCredits(
+      [enemy, ai],
+      { hex: { q: 10, r: 2 }, faction: 1 },
+      { 0: 0, 1: 1000 },
+    );
+    const orders = generateAIOrders(s, 1, unitTypes);
+    expect(orders.some((o) => o.kind === 'attack' && o.unitId === 'a')).toBe(true);
+    expect(orders.some((o) => o.kind === 'move' && o.unitId === 'a')).toBe(false);
+    expect(orders.some((o) => o.kind === 'buy')).toBe(false);
+  });
+
+  test('AI buys at a base its unit is leaving this round (post-move occupancy)', () => {
+    // Unit at the base will move toward a distant enemy → vacates the base
+    // → resolver buy phase happens after movement → AI can buy here.
+    const enemy = unit('e', 'infantry', 0, { q: 0, r: 2 });
+    const ai = unit('a', 'infantry', 1, { q: 10, r: 2 });
+    const s = stateWithBaseAndCredits(
+      [enemy, ai],
+      { hex: { q: 10, r: 2 }, faction: 1 },
+      { 0: 0, 1: 1000 },
+    );
+    const orders = generateAIOrders(s, 1, unitTypes);
+    expect(orders.some((o) => o.kind === 'move' && o.unitId === 'a')).toBe(true);
+    expect(orders.some((o) => o.kind === 'buy' && o.baseHex.q === 10 && o.baseHex.r === 2)).toBe(true);
+  });
+});

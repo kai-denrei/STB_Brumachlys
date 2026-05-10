@@ -26,9 +26,12 @@ export function generateAIOrders(
   const orders: Order[] = [];
   const myUnits = Object.values(state.units).filter((u) => u.faction === faction && u.count > 0);
   const enemies = Object.values(state.units).filter((u) => u.faction !== faction && u.count > 0);
-  if (enemies.length === 0) return orders;
 
-  for (const u of myUnits) {
+  // ── Movement / attack orders (per-unit) ───────────────────────────────────
+  // Skip the per-unit loop if there are no enemies on the map — nothing to
+  // path toward — but still fall through to the buy block so the AI keeps
+  // spending credits on early-game empty maps.
+  for (const u of enemies.length > 0 ? myUnits : []) {
     const ut = unitTypes[u.type];
     if (!ut) continue;
 
@@ -86,6 +89,50 @@ export function generateAIOrders(
           orders.push({ kind: 'attack', unitId: u.id, targetHex: nearest.hex });
         }
       }
+    }
+  }
+
+  // ── Buy orders (one per empty owned base, while affordable) ───────────────
+  // Predict post-move occupancy: a unit that's queuing a move vacates its
+  // origin and lands at the move's destination. That lets the AI buy at
+  // bases its own units are about to leave THIS round (the resolver's buy
+  // phase runs after movement, so the base is empty by then).
+  const occupiedAfterMove = new Set<string>();
+  for (const u of myUnits) {
+    const move = orders.find(
+      (o): o is Extract<Order, { kind: 'move' }> => o.kind === 'move' && o.unitId === u.id,
+    );
+    if (move) {
+      const dest = move.path[move.path.length - 1] ?? u.hex;
+      occupiedAfterMove.add(`${dest.q},${dest.r}`);
+    } else {
+      occupiedAfterMove.add(`${u.hex.q},${u.hex.r}`);
+    }
+  }
+  for (const e of enemies) {
+    occupiedAfterMove.add(`${e.hex.q},${e.hex.r}`);
+  }
+
+  // Cheapest type the AI can build — keeps the production stream going.
+  // Defaults to infantry (¢75) since with ¢100 starting / ¢base income the AI
+  // can usually afford one per turn. Can pick smarter later.
+  const candidates = Object.values(unitTypes)
+    .filter((t) => t.cost > 0)
+    .sort((a, b) => a.cost - b.cost);
+  const cheapest = candidates[0];
+  if (cheapest) {
+    let credits = state.credits[faction] ?? 0;
+    for (const base of state.map.startingBases) {
+      if (base.faction !== faction) continue;
+      const bk = `${base.hex.q},${base.hex.r}`;
+      if (occupiedAfterMove.has(bk)) continue;
+      if (credits < cheapest.cost) break;
+      orders.push({ kind: 'buy', baseHex: base.hex, unitTypeKey: cheapest.key });
+      credits -= cheapest.cost;
+      // The bought unit will spawn AT the base after Phase E, so future
+      // bases this round shouldn't try to buy at the same hex (they won't —
+      // we don't repeat the same base). No need to mark base hex as
+      // occupied; one base produces at most one unit per round.
     }
   }
 
