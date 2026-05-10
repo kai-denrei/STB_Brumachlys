@@ -31,6 +31,8 @@ export function App() {
   const toggleHoverInfo = useStore((s) => s.toggleHoverInfo);
   const hoveredHex = useStore((s) => s.hoveredHex);
   const setHover = useStore((s) => s.setHover);
+  const gameMode = useStore((s) => s.gameMode);
+  const setGameMode = useStore((s) => s.setGameMode);
 
   useEffect(() => {
     if (!game) startGameByMapId(DEFAULT_MAP_ID);
@@ -261,6 +263,8 @@ export function App() {
         credits={plannerCredits}
         hoverInfoMode={hoverInfoMode}
         onToggleHoverInfo={toggleHoverInfo}
+        gameMode={gameMode}
+        onToggleGameMode={() => setGameMode(gameMode === 'solo' ? 'hot-seat' : 'solo')}
       />
       {hoverInfoMode && hoveredHex && planner !== null && (
         <InfoPanel

@@ -8,6 +8,8 @@ type Props = {
   credits?: number; // current player's economy balance
   hoverInfoMode?: boolean;
   onToggleHoverInfo?: () => void;
+  gameMode?: 'hot-seat' | 'solo';
+  onToggleGameMode?: () => void;
 };
 
 const FACTION_LABEL: Record<FactionId, string> = { 0: 'Ember', 1: 'Iron' };
@@ -21,6 +23,8 @@ export function Hud({
   credits,
   hoverInfoMode,
   onToggleHoverInfo,
+  gameMode,
+  onToggleGameMode,
 }: Props) {
   const phaseLabel = phase.replace('-', ' ').toUpperCase();
   return (
@@ -32,6 +36,18 @@ export function Hud({
           <span className={`hud-player ${FACTION_CLASS[player]}`}>
             {FACTION_LABEL[player]} (P{player + 1})
           </span>
+        )}
+        {onToggleGameMode && phase === 'planning' && (
+          <button
+            type="button"
+            className={`hud-mode-toggle${gameMode === 'solo' ? ' on' : ''}`}
+            onClick={onToggleGameMode}
+            aria-pressed={gameMode === 'solo' ? 'true' : 'false'}
+            aria-label={gameMode === 'solo' ? 'Switch to hot-seat (1v1)' : 'Switch to solo (vs AI)'}
+            title={gameMode === 'solo' ? 'Solo (vs AI). Click for hot-seat.' : 'Hot-seat (1v1). Click for solo.'}
+          >
+            {gameMode === 'solo' ? 'SOLO' : '1v1'}
+          </button>
         )}
         {onToggleHoverInfo && phase === 'planning' && (
           <button

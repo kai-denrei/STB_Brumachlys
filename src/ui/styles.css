@@ -130,15 +130,15 @@ em {
   font-weight: 700;
 }
 
+.hud-mode-toggle,
 .hud-info-toggle {
-  margin-left: auto;
-  width: 1.6rem;
   height: 1.6rem;
   border: 1px solid var(--hairline);
   background: transparent;
   color: var(--fg-muted);
   font-family: var(--font-mono);
-  font-size: 1rem;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
   line-height: 1;
   border-radius: 4px;
   cursor: pointer;
@@ -146,6 +146,24 @@ em {
   align-items: center;
   justify-content: center;
   padding: 0;
+}
+
+.hud-info-toggle {
+  width: 1.6rem;
+  font-size: 1rem;
+  margin-left: 0.4rem;
+}
+
+.hud-mode-toggle {
+  margin-left: auto;
+  padding: 0 0.5rem;
+  min-width: 2.6rem;
+}
+
+.hud-mode-toggle.on {
+  background: var(--accent-faction-0);
+  border-color: var(--accent-faction-0);
+  color: var(--bg-base);
 }
 
 .hud-info-toggle.on {

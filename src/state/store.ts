@@ -4,6 +4,7 @@
 import { create } from 'zustand';
 import { resolveRound } from '../core/resolver.ts';
 import { visibleHexesFor } from '../core/fog.ts';
+import { generateAIOrders } from '../core/ai.ts';
 import { parseWeewarMap } from '../io/weewar-xml.ts';
 import { loadUnits, loadTerrain } from '../io/data-loader.ts';
 import { mapById } from '../io/maps.ts';
@@ -46,6 +47,11 @@ type Store = {
   // instead of queuing actions. Persists across rounds; toggled via HUD.
   hoverInfoMode: boolean;
 
+  // Game mode: hot-seat (two human players, with handoff overlay) or
+  // solo (P1 is a stub AI, no handoff, P0 commits → resolution).
+  // Persists across newGame; takes effect at the next P0 commit.
+  gameMode: 'hot-seat' | 'solo';
+
   // Handoff / replay state
   handoffStage: 'none' | 'awaiting-tap' | 'awaiting-confirm';
   replayCursor: number;
@@ -59,6 +65,7 @@ type Store = {
   selectBase: (hex: Hex | null) => void;
   setHover: (hex: Hex | null) => void;
   toggleHoverInfo: () => void;
+  setGameMode: (mode: 'hot-seat' | 'solo') => void;
 
   queueOrder: (faction: FactionId, order: Order) => void;
   removeOrderForUnit: (
@@ -147,6 +154,7 @@ export const useStore = create<Store>((set, get) => ({
   selectedBaseHex: null,
   hoveredHex: null,
   hoverInfoMode: false,
+  gameMode: 'hot-seat',
 
   handoffStage: 'none',
   replayCursor: 0,
@@ -198,6 +206,7 @@ export const useStore = create<Store>((set, get) => ({
   selectBase: (hex) => set({ selectedBaseHex: hex, selectedUnitId: null }),
   setHover: (hex) => set({ hoveredHex: hex }),
   toggleHoverInfo: () => set((s) => ({ hoverInfoMode: !s.hoverInfoMode, hoveredHex: null })),
+  setGameMode: (mode) => set({ gameMode: mode }),
 
   // ── Order queue ─────────────────────────────────────────────────────────
   queueOrder: (faction, order) => {
@@ -366,13 +375,28 @@ export const useStore = create<Store>((set, get) => ({
     const game = get().game;
     if (!game) return;
     if (game.activePlanner === 0) {
-      // P1 done → handoff to P2
-      set({
-        handoffStage: 'awaiting-tap',
-        selectedUnitId: null,
-      });
+      if (get().gameMode === 'solo') {
+        // Solo: P0 done → AI plans for P1, then resolution. No handoff.
+        const aiOrders = generateAIOrders(game, 1, get().unitTypes);
+        set({
+          game: {
+            ...game,
+            pendingOrders: { ...game.pendingOrders, 1: aiOrders },
+            activePlanner: 1,
+          },
+          selectedUnitId: null,
+          selectedBaseHex: null,
+        });
+        get().resolveAndReplay();
+      } else {
+        // Hot-seat: P0 done → handoff to P1
+        set({
+          handoffStage: 'awaiting-tap',
+          selectedUnitId: null,
+        });
+      }
     } else if (game.activePlanner === 1) {
-      // Both committed → resolve
+      // Both committed → resolve (hot-seat path; solo skips this branch)
       get().resolveAndReplay();
     }
   },
