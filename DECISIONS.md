@@ -93,13 +93,32 @@ If no enemy in range: silent skip (no `lost-target` log entry — that's reserve
 
 ### B.17 Move-conflict execution detail
 The resolver walks the planned path step-by-step in init order (so high-init units resolve first). At each step:
-- enemy unit at next hex → stop here (don't enter)
+- enemy unit at next hex → **enter and stop** (mêlée fires in Phase A.5 — see §B.19)
 - friendly unit at next hex AND budget exhausted/end-of-path → pass-through is consumed but final position is the last empty hex (not the friendly's hex)
 - friendly unit at next hex AND more steps remaining → pass-through allowed
 - terrain impassable for this unit type → stop
 - budget < step cost → stop
 
-This implements §2.4 and DECISIONS §B.5 cleanly without a separate "two units want the same hex" branch — natural init-ordering takes care of it.
+Originally enemies blocked the move and the unit stopped one back; that rule was relaxed in §B.19 to enable mêlée stacking.
+
+### B.18 Minimum-damage floor — never round to 0 against a valid target
+Without a floor, the §B.13 `min(attackerCount, defenderCount)` rule combined with `Math.round` half-up makes weakened defenders effectively immortal. Concrete example: a tank at count 10 attacking infantry at count 1 on plains computes `min(10, 1) * 0.45 = 0.45`, which rounds to `0` damage — the infantry never dies even after dozens of strikes.
+
+Fix: when the attacker CAN damage the defender's armor type (`A > 0`) AND the formula yields a positive probability (`p > 0`) but the rounded value is `0`, return `1` instead. Any valid attack chips at least 1 sub-unit. The §B.13 `min()` rule is preserved for all other cases; the §11.2 worked-example fixtures (which produce raw damage > 0) are unaffected.
+
+This also unblocks Phase A.5 mêlée stalemates that otherwise persisted indefinitely between equally-matched but low-count stacks.
+
+### B.19 Mêlée stacking — enemy hexes are valid move destinations
+Originally enemy units blocked movement entirely (path stops one short), and engaging required a separate ranged `attack` order. To collapse the move + attack two-step into a single action and speed games up, enemy hexes were promoted to valid `findPath` / `reachableHexes` destinations. Entering one terminates the path there (you cannot path past); the resolver then runs a **Phase A.5 mêlée loop** for every hex containing more than one faction.
+
+Loop:
+1. Highest-init unit on the hex picks the highest-init enemy on the same hex.
+2. `attackDamage` applied both directions (same hex's terrain for `Ta` / `Td`; no gang-up bonus). The counter bypasses the range gate (we're stacked) but still respects the can-engage-this-armor-type check.
+3. Repeat until only one faction remains, or until both sides deal zero damage on a strike (mutual-immunity stalemate guard against an infinite loop when neither can damage the other).
+
+Phase B still runs after — survivors can take their queued / aggressive auto-attacks normally.
+
+Friendlies cannot share a hex (pass-through stays, can't land).
 
 ---
 
