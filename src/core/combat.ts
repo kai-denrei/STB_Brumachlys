@@ -49,14 +49,21 @@ export function gangUpBonus(
   return total;
 }
 
-// Headline formula from §3.1, with the §11.2 fixture clarification (DECISIONS §B.13):
+// Headline formula from §3.1, with the §11.2 fixture clarification (DECISIONS §B.13)
+// and the §B.16 minimum-damage floor:
 //   p = clamp(0.5 + 0.05 * ((A + Ta) - (D + Td) + B), 0, 1)
-//   damage = roundDamage(min(attackerCount, defenderCount) * p)
+//   raw = roundDamage(min(attackerCount, defenderCount) * p)
+//   damage = (A > 0 && p > 0 && raw === 0) ? 1 : raw
 //
 // The "min" is canonical because the §3.1 formula text and the §11.2 worked
 // example contradict each other; the example wins (third fixture: B=3, p=0.55,
 // attacker count 10, defender count 6 → dmg 3 only holds with min). Thematic
 // reading: the smaller count is the number of "engagements" in the duel.
+//
+// The floor (§B.16) prevents low-count defenders from becoming immortal. Without
+// it, tank-10 vs infantry-1 yields min(10,1) * 0.45 = 0.45 → round 0 → defender
+// never dies. With the floor, any valid attack (the attacker CAN damage that
+// armor type, and p is nonzero) chips at least 1.
 //
 // A is looked up by the *defender's* armor type in the *attacker's* table.
 // Ta is the attacker-type's terrain attack bonus on the attacker's terrain.
@@ -78,7 +85,12 @@ export function attackDamage(
   const Td = defenderType.terrainEffects[defenderTerrain]?.armorBonus ?? 0;
   const p = clamp01(0.5 + 0.05 * ((A + Ta) - (D + Td) + bonusB));
   const engagements = Math.min(attacker.count, defender.count);
-  return roundDamage(engagements * p);
+  const raw = roundDamage(engagements * p);
+  // §B.16 minimum-damage floor: never round to 0 when the attacker can damage
+  // this armor type and the formula gave any positive probability. Stops
+  // weakened defenders becoming immortal stragglers.
+  if (raw === 0 && p > 0) return 1;
+  return raw;
 }
 
 export type ExchangeResult = {

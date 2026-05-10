@@ -92,6 +92,46 @@ describe('attackDamage — clamp + zero-attack edges', () => {
   });
 });
 
+describe('attackDamage — minimum-damage floor (§B.16)', () => {
+  // Tank attacks infantry on plains: A=5, D=6, Ta=Td=0 → p=0.45.
+  // min(10, 1) = 1. raw = round(1 * 0.45) = round(0.45) = 0. Floor → 1.
+  test('tank-10 vs infantry-1 floors raw 0 to 1 (no immortal stragglers)', () => {
+    const att = inst('a', 'tank', 0, { q: 0, r: 0 }, 10);
+    const def = inst('d', 'infantry', 1, { q: 1, r: 0 }, 1);
+    expect(attackDamage(att, def, TNK, INF, 'plains', 'plains', 0)).toBe(1);
+  });
+
+  // Inverse direction: infantry attacks tank with A=3, D=5 → p=0.4.
+  // min(10, 1) = 1, raw = round(0.4) = 0. Floor → 1.
+  test('infantry-10 vs tank-1 also floors to 1', () => {
+    const att = inst('a', 'infantry', 0, { q: 0, r: 0 }, 10);
+    const def = inst('d', 'tank', 1, { q: 1, r: 0 }, 1);
+    expect(attackDamage(att, def, INF, TNK, 'plains', 'plains', 0)).toBe(1);
+  });
+
+  // A=0 means "cannot engage this armor type" — early-return 0, floor not applied.
+  test('floor does NOT fire when attacker cannot engage the armor type', () => {
+    const naval: UnitType = { ...TNK, armorType: 'naval', key: 'frigate' };
+    const att = inst('a', 'infantry', 0, { q: 0, r: 0 }, 10);
+    const def = inst('d', 'tank', 1, { q: 1, r: 0 }, 1);
+    expect(attackDamage(att, def, INF, naval, 'plains', 'plains', 0)).toBe(0);
+  });
+
+  // p clamped to 0 by extreme penalty — floor explicitly skips this branch.
+  test('floor does NOT fire when p clamps to 0', () => {
+    const att = inst('a', 'infantry', 0, { q: 0, r: 0 }, 10);
+    const def = inst('d', 'tank', 1, { q: 1, r: 0 }, 1);
+    expect(attackDamage(att, def, INF, TNK, 'plains', 'plains', -100)).toBe(0);
+  });
+
+  // The §11.2 worked example fixtures are unaffected — they all yield raw > 0.
+  test('positive raw values are passed through unchanged (§11.2 fixtures still hold)', () => {
+    const att = inst('a', 'infantry', 0, { q: 0, r: 0 }, 10);
+    const def = inst('d', 'tank', 1, { q: 1, r: 0 }, 6);
+    expect(attackDamage(att, def, INF, TNK, 'plains', 'plains', 3)).toBe(3);
+  });
+});
+
 describe('classifyPriorAttack (§3.2)', () => {
   // Defender at (1,0). Current attacker at (0,0) (west of defender).
   const def = { q: 1, r: 0 };
